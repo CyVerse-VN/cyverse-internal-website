@@ -4,7 +4,7 @@ Monorepo cho các công cụ nội bộ của CyVerse.
 
 ## Yêu cầu
 
-- Node.js 24.21.0 (xem `.node-version`).
+- Node.js 24.21.0 (xem `.node-version`)
 - Corepack, đi kèm Node.js.
 - `uv` để quản lý Python và dependency backend. Nếu chưa có, cài theo [hướng dẫn chính thức của uv](https://docs.astral.sh/uv/getting-started/installation/).
 
