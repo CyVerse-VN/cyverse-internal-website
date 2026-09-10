@@ -1,0 +1,2 @@
+"""Notification persistence model."""
+

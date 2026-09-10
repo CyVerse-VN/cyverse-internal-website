@@ -1,0 +1,2 @@
+"""Schedule persistence model."""
+

@@ -1,0 +1,70 @@
+# Node.js dependencies and package-manager state
+node_modules/
+.pnpm-store/
+
+# Next.js and frontend tooling
+.next/
+out/
+.turbo/
+.vercel/
+*.tsbuildinfo
+
+# Frontend tests
+playwright-report/
+test-results/
+blob-report/
+
+# Python bytecode and tooling caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.hypothesis/
+.tox/
+.nox/
+
+# Python environments and packaging
+.venv/
+.eggs/
+*.egg-info/
+pip-wheel-metadata/
+
+# Environment files: commit templates, never local values
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Editors and local tooling
+.idea/
+.vscode/
+
+# Build and coverage artifacts
+dist/
+build/
+coverage/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Logs and temporary files
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/

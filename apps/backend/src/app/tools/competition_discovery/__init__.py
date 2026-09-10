@@ -1,0 +1,2 @@
+"""Competition discovery tool."""
+

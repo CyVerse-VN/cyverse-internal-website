@@ -1,0 +1,20 @@
+{
+  "name": "cyverse-internal-tools",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.4.0",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=12 <13"
+  },
+  "scripts": {
+    "bootstrap": "node scripts/bootstrap-env.mjs && pnpm install --frozen-lockfile && uv sync --project apps/backend --extra dev",
+    "dev:web": "pnpm --filter @cyverse/web dev",
+    "dev:backend": "uv run --project apps/backend uvicorn app.main:app --reload",
+    "build:web": "pnpm --filter @cyverse/web build",
+    "lint:web": "pnpm --filter @cyverse/web lint",
+    "test:web": "pnpm --filter @cyverse/web test",
+    "lint:backend": "uv run --project apps/backend ruff check apps/backend/src apps/backend/tests",
+    "test:backend": "uv run --project apps/backend pytest -c apps/backend/pyproject.toml"
+  }
+}
