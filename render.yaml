@@ -12,9 +12,8 @@ services:
     healthCheckPath: /api/v1/health
     autoDeploy: true
 
-    # Pre-deploy command to run database migrations before serving traffic
-    # Note: When using Docker runtime, pre-deploy runs inside the built container image.
-    preDeployCommand: alembic -c alembic.ini upgrade head
+    # On Render Free Tier, preDeployCommand is not supported.
+    # Database migrations run automatically on container startup in Dockerfile.backend.
 
     envVars:
       - key: APP_ENV

@@ -45,7 +45,7 @@ Kho lưu trữ đã tích hợp sẵn file [render.yaml](file:///d:/MyProject/Cy
 4. Render sẽ tự động phát hiện `render.yaml` và nạp dịch vụ `cyverse-backend`:
    - Runtime: **Docker** (sử dụng [Dockerfile.backend](file:///d:/MyProject/CyVerse/cyverse-internal-website/infra/docker/Dockerfile.backend)).
    - Tự động sinh `AUTH_JWT_SECRET` ngẫu nhiên đạt chuẩn bảo mật >= 32 ký tự.
-   - Pre-deploy command tự động chạy migration database trước khi nhận traffic.
+   - Tự động chạy migration database (`alembic upgrade head`) khi container khởi động (hoàn toàn tương thích gói Free tier của Render).
 5. Điền các biến môi trường chưa đồng bộ (ví dụ: `DATABASE_URL`, `CORS_ORIGINS`, các API key AI).
 6. Nhấn **Apply** để bắt đầu build và deploy.
 
@@ -64,11 +64,11 @@ Nếu muốn tự cấu hình trên giao diện Render Dashboard:
    - **Root Directory**: Để trống (mặc định là root của repository).
 4. Chọn một trong hai Runtime:
 
-#### Phương án Docker (Tối ưu và đồng nhất môi trường nhất):
+#### Phương án Docker (Tối ưu và đồng nhất môi trường nhất - Khuyến nghị cho Free tier):
 - **Environment**: `Docker`
 - **Dockerfile Path**: `infra/docker/Dockerfile.backend`
 - **Docker Build Context Directory**: `.`
-- **Pre-Deploy Command**: `alembic -c alembic.ini upgrade head`
+- *(Gói Free không cần điền Pre-Deploy Command vì Dockerfile đã tự động chạy migration khi khởi động)*.
 
 #### Phương án Python Native (Không dùng Docker):
 - **Environment**: `Python`

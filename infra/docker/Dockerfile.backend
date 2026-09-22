@@ -36,5 +36,5 @@ WORKDIR /app/apps/backend
 
 EXPOSE 8000
 
-# Start Uvicorn bound to 0.0.0.0 and dynamic $PORT provided by Render
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Run database migrations and start Uvicorn bound to dynamic $PORT
+CMD ["sh", "-c", "alembic -c alembic.ini upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
