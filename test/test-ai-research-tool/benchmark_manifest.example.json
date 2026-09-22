@@ -1,0 +1,10 @@
+{
+  "description": "Paths are relative to this manifest file.",
+  "queries": [
+    {
+      "name": "medical_rag_hallucination",
+      "result": "results/research_pipeline_v2_1_complete.json",
+      "labels": "evaluation_labels.example.json"
+    }
+  ]
+}

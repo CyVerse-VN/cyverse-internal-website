@@ -1,7 +1,4 @@
-def main() -> None:
-    """Start the background worker process."""
-
+from app.workers.research import main
 
 if __name__ == "__main__":
     main()
-

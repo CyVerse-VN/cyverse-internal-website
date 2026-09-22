@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cyverse.local/schemas/paper-rerank-1.0.0.json",
+  "title": "Query-specific paper reranking",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rerankings"],
+  "properties": {
+    "rerankings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["paper_id", "relevance", "intent_match", "method_match", "confidence", "read_priority", "matched_concepts", "reason"],
+        "properties": {
+          "paper_id": {"type": "string", "minLength": 1},
+          "relevance": {"type": "number", "minimum": 0, "maximum": 1},
+          "intent_match": {"type": "number", "minimum": 0, "maximum": 1},
+          "method_match": {"type": "number", "minimum": 0, "maximum": 1},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "read_priority": {"type": "string", "enum": ["high", "medium", "low"]},
+          "matched_concepts": {
+            "type": "array",
+            "items": {"type": "string"},
+            "maxItems": 6
+          },
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

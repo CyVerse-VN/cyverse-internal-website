@@ -1,0 +1,8 @@
+{
+  "description": "Replace keys with dedup_key values from research_pipeline.json; grade 0=irrelevant, 3=highly relevant.",
+  "relevance_grades": {
+    "doi:10.0000/example": 3,
+    "arxiv:2401.00001": 2,
+    "title:0123456789abcdef": 0
+  }
+}

@@ -1,9 +1,9 @@
-export default function HomePage() {
-  return (
-    <main>
-      <h1>CyVerse Internal Tools</h1>
-      <p>Chọn một công cụ để bắt đầu.</p>
-    </main>
-  );
-}
+import { redirect } from "next/navigation";
 
+import { getCurrentUser } from "@/lib/auth/server";
+
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  return redirect((await getCurrentUser()) ? "/dashboard" : "/login");
+}

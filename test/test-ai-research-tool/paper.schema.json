@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cyverse.local/schemas/research-paper-1.1.0.json",
+  "title": "CyVerse compact normalized research paper",
+  "description": "Schema phẳng dùng chung cho paper từ arXiv, OpenAlex và Semantic Scholar.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "source_id",
+    "source_rank",
+    "title",
+    "abstract",
+    "authors",
+    "year",
+    "published_at",
+    "updated_at",
+    "venue",
+    "doi",
+    "arxiv_id",
+    "url",
+    "pdf_url",
+    "citation_count",
+    "reference_count",
+    "is_open_access",
+    "fields",
+    "publication_types",
+    "source_specific"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.1.0"},
+    "source": {"enum": ["arxiv", "openalex", "semantic_scholar"]},
+    "source_id": {"type": ["string", "null"]},
+    "source_rank": {"type": "integer", "minimum": 1},
+    "title": {"type": "string", "minLength": 1},
+    "abstract": {"type": ["string", "null"]},
+    "authors": {"type": "array", "items": {"type": "string"}},
+    "year": {"type": ["integer", "null"]},
+    "published_at": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "Ngày phát hành theo lịch Việt Nam, định dạng ISO YYYY-MM-DD."
+    },
+    "updated_at": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "Ngày cập nhật theo lịch Việt Nam, định dạng ISO YYYY-MM-DD."
+    },
+    "venue": {"type": ["string", "null"]},
+    "doi": {"type": ["string", "null"]},
+    "arxiv_id": {"type": ["string", "null"]},
+    "url": {"type": ["string", "null"]},
+    "pdf_url": {"type": ["string", "null"]},
+    "citation_count": {"type": ["integer", "null"], "minimum": 0},
+    "reference_count": {"type": ["integer", "null"], "minimum": 0},
+    "is_open_access": {"type": ["boolean", "null"]},
+    "fields": {"type": "array", "items": {"type": "string"}},
+    "publication_types": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "source_specific": {"type": "object", "additionalProperties": true}
+  }
+}

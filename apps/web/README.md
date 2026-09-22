@@ -1,5 +1,7 @@
 # Web
 
+Authentication requests chạy qua Next.js Server Actions. Cấu hình `BACKEND_API_URL` trong `.env.local`; đây là biến server-only và không được đổi thành `NEXT_PUBLIC_*`.
+
 Frontend Next.js dùng App Router.
 
 ```bash

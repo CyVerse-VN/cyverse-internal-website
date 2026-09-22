@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cyverse.local/schemas/paper-query-plan-1.0.0.json",
+  "title": "Paper search query plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "research_question",
+    "english_question",
+    "intent",
+    "ranking_profile",
+    "concept_groups",
+    "filters",
+    "query_variants"
+  ],
+  "properties": {
+    "research_question": {"type": "string", "minLength": 1},
+    "english_question": {"type": "string", "minLength": 1},
+    "intent": {
+      "type": "string",
+      "enum": ["exploratory", "evidence_review", "latest", "seminal", "comparison"]
+    },
+    "ranking_profile": {"type": "string", "enum": ["balanced", "latest", "seminal", "evidence_review"]},
+    "concept_groups": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["concept", "synonyms", "required"],
+        "properties": {
+          "concept": {"type": "string", "minLength": 1},
+          "synonyms": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "required": {"type": "boolean"}
+        }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["year_from", "year_to", "publication_types", "open_access_only", "languages"],
+      "properties": {
+        "year_from": {"type": ["integer", "null"], "minimum": 1900, "maximum": 2100},
+        "year_to": {"type": ["integer", "null"], "minimum": 1900, "maximum": 2100},
+        "publication_types": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["article", "conference", "preprint", "review", "book", "dataset"]}
+        },
+        "open_access_only": {"type": "boolean"},
+        "languages": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {"type": "string", "pattern": "^[A-Za-z]{2,3}$"}
+        }
+      }
+    },
+    "query_variants": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {"type": "string", "minLength": 2}
+    }
+  }
+}

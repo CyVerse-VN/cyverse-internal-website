@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cyverse.local/schemas/paper-assessment-1.0.0.json",
+  "title": "Paper shortlist assessments",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assessments"],
+  "properties": {
+    "assessments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "paper_id",
+          "summary",
+          "main_contribution",
+          "why_read",
+          "paper_type",
+          "tags",
+          "evidence_strength",
+          "limitations_visible_from_abstract",
+          "confidence"
+        ],
+        "properties": {
+          "paper_id": {"type": "string"},
+          "summary": {"type": "string"},
+          "main_contribution": {"type": "string"},
+          "why_read": {"type": "string"},
+          "paper_type": {
+            "type": "string",
+            "enum": ["method", "review", "survey", "benchmark", "dataset", "application", "theory", "other"]
+          },
+          "tags": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "evidence_strength": {"type": "number", "minimum": 0, "maximum": 1},
+          "limitations_visible_from_abstract": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    }
+  }
+}
