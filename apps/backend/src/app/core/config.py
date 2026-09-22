@@ -27,9 +27,10 @@ class Settings(BaseSettings):
     supabase_key: SecretStr | None = None
     openrouter_api_key: SecretStr | None = None
     groq_api_key: SecretStr | None = None
+    gemini_api_key: SecretStr | None = None
     research_semantic_scholar_api_key: SecretStr | None = None
     research_openalex_api_key: SecretStr | None = None
-    cors_origins: list[str] = [
+    cors_origins: list[str] | str = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]

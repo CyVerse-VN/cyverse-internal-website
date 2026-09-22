@@ -49,4 +49,8 @@ services:
       - key: SUPABASE_KEY
         sync: false
       - key: SUPABASE_POOLER_REGION
+        value: ap-northeast-1
+      - key: RESEARCH_SEMANTIC_SCHOLAR_API_KEY
+        sync: false
+      - key: RESEARCH_OPENALEX_API_KEY
         sync: false
