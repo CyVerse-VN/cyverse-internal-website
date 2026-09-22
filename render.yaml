@@ -12,18 +12,14 @@ services:
     healthCheckPath: /api/v1/health
     autoDeploy: true
 
-    # On Render Free Tier, preDeployCommand is not supported.
-    # Database migrations run automatically on container startup in Dockerfile.backend.
-
     envVars:
+      # Các cấu hình cố định (Render tự động nạp ngầm, không cần nhập)
       - key: APP_ENV
         value: production
       - key: APP_NAME
         value: CyVerse Internal Tools API
       - key: API_V1_PREFIX
         value: /api/v1
-      - key: DATABASE_URL
-        sync: false
       - key: AUTH_JWT_SECRET
         generateValue: true
       - key: AUTH_JWT_ISSUER
@@ -34,23 +30,11 @@ services:
         value: "15"
       - key: AUTH_REFRESH_TOKEN_DAYS
         value: "30"
-      - key: CORS_ORIGINS
-        sync: false
-      - key: CORS_ORIGIN_REGEX
-        value: "^https://.*\\.vercel\\.app$"
-      - key: GROQ_API_KEY
-        sync: false
-      - key: OPENROUTER_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_KEY
-        sync: false
       - key: SUPABASE_POOLER_REGION
         value: ap-northeast-1
-      - key: RESEARCH_SEMANTIC_SCHOLAR_API_KEY
-        sync: false
-      - key: RESEARCH_OPENALEX_API_KEY
+      - key: CORS_ORIGIN_REGEX
+        value: "^https://.*\\.vercel\\.app$"
+
+      # Biến bắt buộc DUY NHẤT để deploy backend thành công
+      - key: DATABASE_URL
         sync: false
