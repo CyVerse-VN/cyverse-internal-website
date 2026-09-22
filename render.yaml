@@ -13,7 +13,7 @@ services:
     autoDeploy: true
 
     envVars:
-      # Các cấu hình cố định (Render tự động nạp ngầm, không cần nhập)
+      # 1. Cấu hình hệ thống cố định (Render tự động nạp ngầm)
       - key: APP_ENV
         value: production
       - key: APP_NAME
@@ -35,6 +35,26 @@ services:
       - key: CORS_ORIGIN_REGEX
         value: "^https://.*\\.vercel\\.app$"
 
-      # Biến bắt buộc DUY NHẤT để deploy backend thành công
+      # 2. Các biến tùy chọn có giá trị mặc định (không bắt buộc nhập)
+      - key: CORS_ORIGINS
+        value: ""
+      - key: SUPABASE_URL
+        value: ""
+      - key: SUPABASE_KEY
+        value: ""
+
+      # 3. Database URL (Bắt buộc)
       - key: DATABASE_URL
+        sync: false
+
+      # 4. Toàn bộ các API Key AI & Nghiên cứu (Dán từ file .env của bạn)
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: RESEARCH_SEMANTIC_SCHOLAR_API_KEY
+        sync: false
+      - key: RESEARCH_OPENALEX_API_KEY
         sync: false
