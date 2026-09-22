@@ -1,0 +1,53 @@
+# Render Blueprint specification for CyVerse Internal Tools
+# Documentation: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: cyverse-backend
+    runtime: docker
+    dockerfilePath: infra/docker/Dockerfile.backend
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+
+    # Pre-deploy command to run database migrations before serving traffic
+    # Note: When using Docker runtime, pre-deploy runs inside the built container image.
+    preDeployCommand: alembic -c alembic.ini upgrade head
+
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_NAME
+        value: CyVerse Internal Tools API
+      - key: API_V1_PREFIX
+        value: /api/v1
+      - key: DATABASE_URL
+        sync: false
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: AUTH_JWT_ISSUER
+        value: cyverse-backend
+      - key: AUTH_JWT_AUDIENCE
+        value: cyverse-internal-web
+      - key: AUTH_ACCESS_TOKEN_MINUTES
+        value: "15"
+      - key: AUTH_REFRESH_TOKEN_DAYS
+        value: "30"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: CORS_ORIGIN_REGEX
+        value: "^https://.*\\.vercel\\.app$"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_POOLER_REGION
+        sync: false

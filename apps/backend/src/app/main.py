@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
@@ -60,6 +61,21 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=error.status_code,
             content={"detail": error.detail, "code": error.code},
+        )
+
+    @application.get("/health", tags=["health"], include_in_schema=False)
+    async def root_health_check() -> dict[str, str]:
+        return {"status": "ok"}
+
+    if settings.cors_origins or settings.cors_origin_regex:
+        allow_credentials = "*" not in settings.cors_origins
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_origin_regex=settings.cors_origin_regex,
+            allow_credentials=allow_credentials,
+            allow_methods=["*"],
+            allow_headers=["*"],
         )
 
     application.include_router(api_router, prefix=settings.api_v1_prefix)

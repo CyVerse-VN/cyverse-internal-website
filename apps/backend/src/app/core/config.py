@@ -1,4 +1,6 @@
+import json
 import re
+from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
 
@@ -27,12 +29,52 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     research_semantic_scholar_api_key: SecretStr | None = None
     research_openalex_api_key: SecretStr | None = None
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    cors_origin_regex: str | None = None
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: object) -> list[str]:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("[") and stripped.endswith("]"):
+                with suppress(json.JSONDecodeError):
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+            return [item.strip() for item in stripped.split(",") if item.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return []
+
+    @field_validator("cors_origin_regex", mode="before")
+    @classmethod
+    def normalize_origin_regex(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
     @field_validator("database_url", mode="before")
     @classmethod
     def use_psycopg_driver(cls, value: str) -> str:
         if value.startswith("postgresql://"):
-            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+            value = value.replace("postgresql://", "postgresql+psycopg://", 1)
+        if "://" in value:
+            scheme, rest = value.split("://", 1)
+            if "@" in rest:
+                auth, host_part = rest.rsplit("@", 1)
+                if ":" in auth and "@" in auth:
+                    user, password = auth.split(":", 1)
+                    from urllib.parse import quote, unquote
+
+                    safe_password = quote(unquote(password), safe="")
+                    value = f"{scheme}://{user}:{safe_password}@{host_part}"
         return value
 
     @field_validator("supabase_pooler_region", mode="before")

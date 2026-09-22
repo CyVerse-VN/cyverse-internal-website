@@ -14,6 +14,8 @@
     "db:status": "uv run --project apps/backend alembic -c apps/backend/alembic.ini current",
     "db:migrate": "uv run --project apps/backend alembic -c apps/backend/alembic.ini upgrade head",
     "admin:create": "uv run --project apps/backend cyverse-create-admin",
+    "build": "pnpm build:web",
+    "start": "pnpm --filter @cyverse/web start",
     "build:web": "pnpm --filter @cyverse/web build",
     "lint:web": "pnpm --filter @cyverse/web lint",
     "test:web": "pnpm --filter @cyverse/web test",

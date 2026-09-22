@@ -1,0 +1,40 @@
+# Build stage
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
+
+WORKDIR /app
+
+# Enable bytecode compilation and standalone copies
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+# Install dependencies in a cached layer
+COPY apps/backend/pyproject.toml apps/backend/uv.lock ./apps/backend/
+RUN uv sync --frozen --project apps/backend --no-dev --no-install-project
+
+# Copy application source and configuration
+COPY apps/backend ./apps/backend
+
+# Install application project
+RUN uv sync --frozen --project apps/backend --no-dev
+
+# Final runtime stage
+FROM python:3.13-slim-bookworm
+
+WORKDIR /app
+
+# Security & runtime environment
+ENV PATH="/app/apps/backend/.venv/bin:$PATH" \
+    PYTHONPATH="/app/apps/backend/src:$PYTHONPATH" \
+    PYTHONUNBUFFERED=1 \
+    PORT=8000
+
+# Copy virtual environment and application code
+COPY --from=builder /app/apps/backend/.venv /app/apps/backend/.venv
+COPY --from=builder /app/apps/backend /app/apps/backend
+
+WORKDIR /app/apps/backend
+
+EXPOSE 8000
+
+# Start Uvicorn bound to 0.0.0.0 and dynamic $PORT provided by Render
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

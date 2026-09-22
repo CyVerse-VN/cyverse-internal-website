@@ -47,3 +47,27 @@ def test_supabase_direct_url_can_use_the_ipv4_session_pooler() -> None:
     assert url.host == "aws-0-ap-southeast-2.pooler.supabase.com"
     assert url.port == 5432
     assert url.query["sslmode"] == "require"
+
+
+def test_cors_origins_can_be_parsed_from_comma_separated_string() -> None:
+    settings = Settings(
+        cors_origins="https://app.example.com, https://cyverse.vercel.app ",
+        _env_file=None,
+    )
+    assert settings.cors_origins == ["https://app.example.com", "https://cyverse.vercel.app"]
+
+
+def test_cors_origins_can_be_parsed_from_json_string() -> None:
+    settings = Settings(
+        cors_origins='["https://app.example.com", "https://cyverse.vercel.app"]',
+        _env_file=None,
+    )
+    assert settings.cors_origins == ["https://app.example.com", "https://cyverse.vercel.app"]
+
+
+def test_cors_origin_regex_normalization() -> None:
+    settings = Settings(
+        cors_origin_regex="  ^https://.*\\.vercel\\.app$  ",
+        _env_file=None,
+    )
+    assert settings.cors_origin_regex == "^https://.*\\.vercel\\.app$"
