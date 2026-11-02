@@ -1,36 +1,46 @@
 # Build stage
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
+FROM python:3.13-slim-bookworm AS builder
+
+# Install uv from official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Enable bytecode compilation and standalone copies
-ENV UV_COMPILE_BYTECODE=1
-ENV UV_LINK_MODE=copy
+# Enable bytecode compilation, copy link mode, and configure uv python
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=always \
+    UV_PYTHON_INSTALL_DIR=/opt/python
+
+# Install the exact Python version required by project (3.13.15)
+RUN uv python install 3.13.15
 
 # Install dependencies in a cached layer
 COPY apps/backend/pyproject.toml apps/backend/uv.lock ./apps/backend/
-RUN uv sync --frozen --project apps/backend --no-dev --no-install-project
+RUN uv sync --frozen --project apps/backend --no-dev --no-install-project --python 3.13.15
 
 # Copy application source and configuration
 COPY apps/backend ./apps/backend
 
 # Install application project
-RUN uv sync --frozen --project apps/backend --no-dev
+RUN uv sync --frozen --project apps/backend --no-dev --python 3.13.15
 
 # Final runtime stage
 FROM python:3.13-slim-bookworm
 
 WORKDIR /app
 
-# Security & runtime environment
+# Runtime environment
 ENV PATH="/app/apps/backend/.venv/bin:$PATH" \
     PYTHONPATH="/app/apps/backend/src:$PYTHONPATH" \
     PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PORT=8000
 
-# Copy virtual environment and application code
-COPY --from=builder /app/apps/backend/.venv /app/apps/backend/.venv
+# Copy Python installation, application code and virtual environment
+COPY --from=builder /opt/python /opt/python
 COPY --from=builder /app/apps/backend /app/apps/backend
+COPY --from=builder /app/apps/backend/.venv /app/apps/backend/.venv
 
 # Install Playwright Chromium and system dependencies for browser scraping
 RUN playwright install --with-deps chromium && \
@@ -42,3 +52,4 @@ EXPOSE 8000
 
 # Run database migrations and start Uvicorn bound to dynamic $PORT
 CMD ["sh", "-c", "alembic -c alembic.ini upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+
