@@ -88,10 +88,11 @@ def bundle_local_sessions(config: ThreadsConfig) -> Path:
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
     content = json.dumps(bundle, indent=2, ensure_ascii=False)
     bundle_path.write_text(content, encoding="utf-8")
-    try:
-        Path("threads_sessions.json").write_text(content, encoding="utf-8")
-    except OSError:
-        pass
+    if sessions:
+        try:
+            Path("threads_sessions.json").write_text(content, encoding="utf-8")
+        except OSError:
+            pass
     return bundle_path
 
 
@@ -117,8 +118,6 @@ async def save_session(context: BrowserContext, path: Path) -> None:
         os.replace(temporary, path)
     finally:
         Path(temporary).unlink(missing_ok=True)
-
-    bundle_local_sessions(threads_config)
 
 
 async def login_account(
@@ -157,6 +156,7 @@ async def login_account(
                         )
                         if "/login" not in page.url and "/challenge" not in page.url:
                             await save_session(context, config.session_path(account))
+                            bundle_local_sessions(config)
                             return
                     await page.wait_for_timeout(1000)
                 raise ThreadsError(

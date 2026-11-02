@@ -35,12 +35,14 @@ export function ImportSessionModal({
   const [file, setFile] = useState<File | null>(null);
   const [jsonText, setJsonText] = useState("");
   const [detectedBundleAccounts, setDetectedBundleAccounts] = useState<string[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleClose = () => {
     setFile(null);
     setJsonText("");
     setDetectedBundleAccounts([]);
+    setIsDragging(false);
     setError(null);
     onOpenChange(false);
   };
@@ -79,38 +81,73 @@ export function ImportSessionModal({
     };
   }, [open, defaultAccountId]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
-    if (selected) {
-      setFile(selected);
-      setError(null);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = String(event.target?.result ?? "");
-        setJsonText(text);
+  const processFile = (selected: File) => {
+    setFile(selected);
+    setError(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = String(event.target?.result ?? "");
+      setJsonText(text);
 
-        // Detect whether this is a bundled threads_sessions.json or a single account session
-        try {
-          const parsed = JSON.parse(text);
-          if (typeof parsed === "object" && parsed !== null) {
-            if ("sessions" in parsed && typeof parsed.sessions === "object" && parsed.sessions !== null) {
-              setDetectedBundleAccounts(Object.keys(parsed.sessions));
-            } else if (!("cookies" in parsed)) {
-              const keys = Object.keys(parsed).filter((k) => typeof parsed[k] === "object" && parsed[k] !== null && "cookies" in parsed[k]);
-              if (keys.length > 0) {
-                setDetectedBundleAccounts(keys);
-              } else {
-                setDetectedBundleAccounts([]);
-              }
+      // Detect whether this is a bundled threads_sessions.json or a single account session
+      try {
+        const parsed = JSON.parse(text);
+        if (typeof parsed === "object" && parsed !== null) {
+          if ("sessions" in parsed && typeof parsed.sessions === "object" && parsed.sessions !== null) {
+            setDetectedBundleAccounts(Object.keys(parsed.sessions));
+          } else if (Array.isArray(parsed)) {
+            const ids = parsed
+              .map((item) => (typeof item === "object" && item !== null ? item.id || item.account_id : null))
+              .filter(Boolean) as string[];
+            setDetectedBundleAccounts(ids);
+          } else if (!("cookies" in parsed)) {
+            const keys = Object.keys(parsed).filter((k) => typeof parsed[k] === "object" && parsed[k] !== null && "cookies" in parsed[k]);
+            if (keys.length > 0) {
+              setDetectedBundleAccounts(keys);
             } else {
               setDetectedBundleAccounts([]);
             }
+          } else {
+            setDetectedBundleAccounts([]);
           }
-        } catch {
-          setDetectedBundleAccounts([]);
         }
-      };
-      reader.readAsText(selected);
+      } catch {
+        setDetectedBundleAccounts([]);
+      }
+    };
+    reader.readAsText(selected);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (selected) {
+      processFile(selected);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (droppedFile) {
+      if (!droppedFile.name.endsWith(".json") && droppedFile.type !== "application/json") {
+        setError("Only JSON files (.json) are supported.");
+        return;
+      }
+      processFile(droppedFile);
     }
   };
 
@@ -130,6 +167,18 @@ export function ImportSessionModal({
 
     if (typeof parsedData !== "object" || parsedData === null) {
       setError("Invalid session format: JSON must be an object.");
+      return;
+    }
+
+    const isBundleFormat =
+      ("sessions" in (parsedData as Record<string, unknown>) &&
+        typeof (parsedData as Record<string, unknown>).sessions === "object") ||
+      Array.isArray(parsedData);
+
+    if (isBundleFormat && detectedBundleAccounts.length === 0) {
+      setError(
+        "Tệp session bundle không chứa tài khoản hợp lệ nào (đối tượng 'sessions' rỗng). Vui lòng kiểm tra lại file threads_sessions.json."
+      );
       return;
     }
 
@@ -154,8 +203,8 @@ export function ImportSessionModal({
         if (!selectedAccount) {
           throw new Error("Please select a target account for this session file.");
         }
-        if (!("cookies" in parsedData)) {
-          throw new Error("Single session file must contain a 'cookies' array.");
+        if (!("cookies" in (parsedData as Record<string, unknown>))) {
+          throw new Error("Tệp session đơn lẻ phải chứa mảng 'cookies', hoặc bundle phải chứa 'sessions'.");
         }
         const res = await fetch(`/api/threads/accounts/${encodeURIComponent(selectedAccount)}/session`, {
           method: "POST",
@@ -249,13 +298,23 @@ export function ImportSessionModal({
               <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Session File (threads_sessions.json or {selectedAccount ? `${selectedAccount}.json` : "acc_01.json"})
               </label>
-              <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center transition-colors hover:border-indigo-400 hover:bg-indigo-50/20 dark:border-slate-700 dark:bg-slate-900/50">
-                <UploadCloud className="mb-2 h-8 w-8 text-slate-400" />
+              <label
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition-all ${
+                  isDragging
+                    ? "border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/50 scale-[1.01] shadow-inner"
+                    : "border-slate-300 bg-slate-50 hover:border-indigo-400 hover:bg-indigo-50/20 dark:border-slate-700 dark:bg-slate-900/50"
+                }`}
+              >
+                <UploadCloud className={`mb-2 h-8 w-8 transition-transform ${isDragging ? "text-indigo-600 scale-110" : "text-slate-400"}`} />
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  {file ? file.name : "Click to select threads_sessions.json or acc_01.json"}
+                  {file ? file.name : isDragging ? "Thả file vào đây..." : "Kéo & thả file vào đây, hoặc bấm để chọn tệp"}
                 </span>
-                <span className="text-xs text-slate-400">
-                  Supports unified bundle (threads_sessions.json) or individual Playwright session files
+                <span className="text-xs text-slate-400 mt-1">
+                  Hỗ trợ kéo thả cả file bundle (threads_sessions.json) hoặc file session lẻ (acc_01.json)
                 </span>
                 <input
                   type="file"
