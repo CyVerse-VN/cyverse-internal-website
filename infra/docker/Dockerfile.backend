@@ -9,7 +9,7 @@ WORKDIR /app
 # Enable bytecode compilation, copy link mode, and configure uv python
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PYTHON_DOWNLOADS=always \
+    UV_PYTHON_DOWNLOADS=auto \
     UV_PYTHON_INSTALL_DIR=/opt/python
 
 # Install the exact Python version required by project (3.13.15)
