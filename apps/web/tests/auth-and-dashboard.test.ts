@@ -49,6 +49,7 @@ describe("isUserListResponse", () => {
     username: "admin",
     display_name: "Admin User",
     team: "Platform",
+    notebooklm_email: null,
     role: "admin",
     is_active: true,
     created_at: "2026-09-12T00:00:00Z",
@@ -65,6 +66,15 @@ describe("isUserListResponse", () => {
         current_user_id: user.id,
       }),
     ).toBe(true);
+  });
+
+  it("accepts users from a backend that has not added the NotebookLM email field yet", () => {
+    const previousUser: Partial<typeof user> = { ...user };
+    delete previousUser.notebooklm_email;
+    expect(isUserListResponse({
+      items: [previousUser], total: 1, page: 1, page_size: 20,
+      current_user_id: user.id,
+    })).toBe(true);
   });
 
   it("rejects a response without the current user identifier", () => {

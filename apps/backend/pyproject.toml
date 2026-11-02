@@ -9,19 +9,25 @@ description = "CyVerse Internal Tools API"
 requires-python = ">=3.13.15,<3.14"
 dependencies = [
   "alembic>=1.19,<1.20",
+  "certifi>=2026.10.18",
+  "cryptography>=50,<51",
   "fastapi>=0.141,<0.142",
   "httpx>=0.27,<1.0",
+  "notebooklm-py[browser]==0.8.3",
+  "playwright>=1.48,<2",
   "psycopg[binary]>=3,<4",
   "pwdlib[argon2]>=0.2,<1",
   "pydantic>=2,<3",
   "pydantic-settings>=2,<3",
   "pyjwt>=2.10,<3",
+  "pyotp>=2.9,<3",
   "sqlalchemy>=2.0,<2.1",
   "uvicorn[standard]>=0.32,<1.0",
 ]
 
 [project.scripts]
 cyverse-create-admin = "app.auth.bootstrap_admin:main"
+cyverse-threads-login = "app.tools.threads.auth:main"
 
 [project.optional-dependencies]
 dev = [

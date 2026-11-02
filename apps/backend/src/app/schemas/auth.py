@@ -29,6 +29,7 @@ class UserPublic(BaseModel):
     username: str
     display_name: str
     team: str | None
+    notebooklm_email: str | None
     role: RoleValue
     is_active: bool
     created_at: datetime
@@ -63,6 +64,7 @@ class TokenPairResponse(BaseModel):
 class CreateUserRequest(UsernameMixin, PasswordMixin):
     display_name: str = Field(min_length=1, max_length=100)
     team: str | None = Field(default=None, min_length=1, max_length=100)
+    notebooklm_email: str | None = Field(default=None, max_length=320, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
     role: RoleValue = "member"
 
     @field_validator("display_name")
@@ -87,6 +89,7 @@ class CreateUserRequest(UsernameMixin, PasswordMixin):
 class UpdateUserRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=100)
     team: str | None = Field(default=None, min_length=1, max_length=100)
+    notebooklm_email: str | None = Field(default=None, max_length=320, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
     role: RoleValue | None = None
     is_active: bool | None = None
 
@@ -118,6 +121,7 @@ class ResetPasswordRequest(PasswordMixin):
 class UpdateProfileRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
     team: str | None = Field(default=None, min_length=1, max_length=100)
+    notebooklm_email: str | None = Field(default=None, max_length=320, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
     @field_validator("display_name")
     @classmethod

@@ -1,12 +1,14 @@
 import json
-import re
 from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote, unquote
 
-from pydantic import PositiveInt, SecretStr, field_validator, model_validator
+import certifi
+from pydantic import Field, PositiveInt, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 BACKEND_ENV_FILE = BACKEND_ROOT / ".env"
@@ -16,15 +18,12 @@ class Settings(BaseSettings):
     app_name: str = "CyVerse Internal Tools API"
     app_env: str = "development"
     api_v1_prefix: str = "/api/v1"
-    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/cyverse"
+    database_url: str = Field(repr=False)
     auth_jwt_secret: SecretStr = SecretStr("development-only-change-this-jwt-secret")
     auth_jwt_issuer: str = "cyverse-backend"
     auth_jwt_audience: str = "cyverse-internal-web"
     auth_access_token_minutes: PositiveInt = 15
     auth_refresh_token_days: PositiveInt = 30
-    supabase_pooler_region: str | None = None
-    supabase_url: str | None = None
-    supabase_key: SecretStr | None = None
     openrouter_api_key: SecretStr | None = None
     groq_api_key: SecretStr | None = None
     gemini_api_key: SecretStr | None = None
@@ -61,58 +60,38 @@ class Settings(BaseSettings):
         normalized = value.strip()
         return normalized or None
 
-    @field_validator("database_url", mode="before")
+    @field_validator("database_url")
     @classmethod
-    def use_psycopg_driver(cls, value: str) -> str:
-        if value.startswith("postgresql://"):
-            value = value.replace("postgresql://", "postgresql+psycopg://", 1)
+    def normalize_database_url(cls, value: str) -> str:
+        value = value.strip()
         if "://" in value:
             scheme, rest = value.split("://", 1)
             if "@" in rest:
                 auth, host_part = rest.rsplit("@", 1)
                 if ":" in auth and "@" in auth:
                     user, password = auth.split(":", 1)
-                    from urllib.parse import quote, unquote
-
                     safe_password = quote(unquote(password), safe="")
                     value = f"{scheme}://{user}:{safe_password}@{host_part}"
-        return value
+        try:
+            url = make_url(value)
+        except (ArgumentError, ValueError):
+            raise ValueError("DATABASE_URL must be a valid PostgreSQL connection URL") from None
+        if url.drivername not in {"postgresql", "postgresql+psycopg"}:
+            raise ValueError("DATABASE_URL must use PostgreSQL with the psycopg driver")
+        if not url.host or not url.username or not url.database:
+            raise ValueError("DATABASE_URL must include a host, username, and database name")
 
-    @field_validator("supabase_pooler_region", mode="before")
-    @classmethod
-    def normalize_pooler_region(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip().lower()
-        if not normalized:
-            return None
-        if re.fullmatch(r"[a-z]{2}-[a-z]+-\d", normalized) is None:
-            raise ValueError("SUPABASE_POOLER_REGION must be a valid AWS region")
-        return normalized
-
-    @model_validator(mode="after")
-    def use_supabase_session_pooler(self) -> "Settings":
-        if self.supabase_pooler_region is None:
-            return self
-
-        url = make_url(self.database_url)
-        direct_match = re.fullmatch(r"db\.([a-z0-9]+)\.supabase\.co", url.host or "")
-        if direct_match is None:
-            if (url.host or "").endswith(".pooler.supabase.com"):
-                return self
-            raise ValueError("SUPABASE_POOLER_REGION requires a Supabase direct DATABASE_URL")
-
-        project_ref = direct_match.group(1)
         query = dict(url.query)
-        query.setdefault("sslmode", "require")
-        pooler_url = url.set(
-            username=f"postgres.{project_ref}",
-            host=f"aws-0-{self.supabase_pooler_region}.pooler.supabase.com",
-            port=5432,
-            query=query,
+        if url.host.lower().endswith(".pg.tidbcloud.com"):
+            query.setdefault("sslmode", "verify-full")
+            sslmode = query["sslmode"]
+            if not isinstance(sslmode, str) or sslmode not in {"require", "verify-ca", "verify-full"}:
+                raise ValueError("DATABASE_URL must require TLS for TiDB Cloud")
+            if sslmode == "verify-full":
+                query.setdefault("sslrootcert", certifi.where())
+        return url.set(drivername="postgresql+psycopg", query=query).render_as_string(
+            hide_password=False
         )
-        self.database_url = pooler_url.render_as_string(hide_password=False)
-        return self
 
     @model_validator(mode="after")
     def validate_jwt_secret(self) -> "Settings":
@@ -128,6 +107,7 @@ class Settings(BaseSettings):
         env_file=BACKEND_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
 

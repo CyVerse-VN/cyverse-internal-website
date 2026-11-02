@@ -8,3 +8,6 @@ deterministic fallback; final enrichment bắt buộc response hợp lệ, summa
 Model list, provider, endpoint và các thông số vận hành AI Research nằm trong typed config tại
 `apps/backend/src/app/tools/research/config.py`. Secret chỉ nằm trong backend environment và không
 được expose ra frontend.
+
+Hạn mức lưu lượng (Rate Limits: RPM, TPM, RPD, TPD, ASH, ASD) cho các model Gemini và Groq cùng các công thức điều phối tần suất gọi an toàn (tránh lỗi 429 và nguy cơ bị ban key) được quản lý tập trung tại [docs/ai-rate-limits.md](file:///d:/Projects/cyverse/cyverse-internal-website/docs/ai-rate-limits.md) và triển khai tại [apps/backend/src/app/core/ai_rate_limits.py](file:///d:/Projects/cyverse/cyverse-internal-website/apps/backend/src/app/core/ai_rate_limits.py).
+

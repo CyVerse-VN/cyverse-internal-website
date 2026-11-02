@@ -10,16 +10,20 @@
   "scripts": {
     "bootstrap": "node scripts/bootstrap-env.mjs && pnpm install --frozen-lockfile && uv sync --project apps/backend --extra dev",
     "dev:web": "pnpm --filter @cyverse/web dev",
-    "dev:backend": "uv run --project apps/backend uvicorn app.main:app --reload",
-    "db:status": "uv run --project apps/backend alembic -c apps/backend/alembic.ini current",
-    "db:migrate": "uv run --project apps/backend alembic -c apps/backend/alembic.ini upgrade head",
-    "admin:create": "uv run --project apps/backend cyverse-create-admin",
+    "dev:backend": "uv run --project apps/backend python -m uvicorn app.main:app --loop app.core.runtime:create_event_loop --reload",
+    "start:backend": "uv run --project apps/backend python -m uvicorn app.main:app --loop app.core.runtime:create_event_loop --host 127.0.0.1 --port 8000",
+    "db:status": "uv run --project apps/backend python -m alembic -c apps/backend/alembic.ini current",
+    "db:migrate": "uv run --project apps/backend python -m alembic -c apps/backend/alembic.ini upgrade head",
+    "admin:create": "uv run --project apps/backend python -m app.auth.bootstrap_admin",
+    "threads:install": "uv run --project apps/backend python -m playwright install chromium",
+    "threads:login": "uv run --project apps/backend python -m app.tools.threads.auth",
+    "threads:worker": "uv run --project apps/backend python -m app.workers.threads",
     "build": "pnpm build:web",
     "start": "pnpm --filter @cyverse/web start",
     "build:web": "pnpm --filter @cyverse/web build",
     "lint:web": "pnpm --filter @cyverse/web lint",
     "test:web": "pnpm --filter @cyverse/web test",
-    "lint:backend": "uv run --project apps/backend ruff check apps/backend/src apps/backend/tests",
-    "test:backend": "uv run --project apps/backend pytest -c apps/backend/pyproject.toml"
+    "lint:backend": "uv run --project apps/backend python -m ruff check apps/backend/src apps/backend/tests",
+    "test:backend": "uv run --project apps/backend python -m pytest -c apps/backend/pyproject.toml apps/backend/tests"
   }
 }

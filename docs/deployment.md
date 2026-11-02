@@ -3,7 +3,14 @@
 Tài liệu hướng dẫn triển khai toàn diện hệ sinh thái CyVerse Internal Tools với kiến trúc phân tán:
 - **Frontend (`apps/web`)**: Triển khai trên **Vercel** (Next.js 16+ Turbopack).
 - **Backend (`apps/backend`)**: Triển khai trên **Render** (FastAPI, Python 3.13, Uvicorn, uv).
-- **Database**: PostgreSQL (Render PostgreSQL, Supabase, Neon hoặc AWS RDS).
+- **Database**: PostgreSQL-compatible TiDB Cloud, database `cyverse_internal`.
+
+Threads TXT archives dùng Cloudinary qua ba secret backend-only:
+`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`. Blueprint có sẵn
+biến để điền. Sau khi cấu hình, restart backend/worker để hàng đợi archive retry. Cần
+áp dụng migration `20261102_0008` trước khi chạy code Threads mới. Backend/worker phải
+tiếp tục hoạt động để collection, archive và cleanup chạy khi người dùng đóng frontend;
+dịch vụ bị sleep hoặc dừng sẽ không tiếp tục xử lý trong thời gian đó.
 
 ---
 
@@ -22,7 +29,7 @@ Tài liệu hướng dẫn triển khai toàn diện hệ sinh thái CyVerse Int
         │
         ├── (3) Database Queries (DATABASE_URL qua psycopg3)
         ▼
-[ PostgreSQL Database ] (Supabase / Render Postgres)
+[ TiDB Cloud PostgreSQL ] (cyverse_internal, TLS)
 ```
 
 - **Authentication & Cookies**: Next.js Server Actions thực hiện đăng nhập với Backend và quản lý `access_token` cùng `refresh_token` trong Cookie bảo mật (`HttpOnly`, `SameSite=Lax`, `Secure` trên HTTPS).
@@ -99,7 +106,7 @@ Khai báo trong mục **Environment Variables** của Web Service trên Render:
 | `APP_ENV` | Có | `production` |
 | `APP_NAME` | Có | `CyVerse Internal Tools API` |
 | `API_V1_PREFIX` | Có | `/api/v1` |
-| `DATABASE_URL` | Có | Connection string PostgreSQL (ví dụ: `postgresql+psycopg://user:pass@host:5432/dbname`). Nếu dùng URL dạng `postgresql://`, hệ thống sẽ tự động chuyển sang driver `psycopg`. |
+| `DATABASE_URL` | Có | Connection string PostgreSQL từ **Connect** trong TiDB Cloud, database `cyverse_internal`, port `5432`. Dùng `postgresql://` hoặc `postgresql+psycopg://`; backend và Alembic tự dùng psycopg 3 và mặc định `sslmode=verify-full`. Chỉ lưu giá trị thật trong Render Environment. Xem [database setup](database.md). |
 | `AUTH_JWT_SECRET` | Có | Chuỗi ngẫu nhiên bí mật tối thiểu **32 ký tự** (Render Blueprint tự động sinh bằng `generateValue: true`). Không sử dụng giá trị mẫu trong production. |
 | `AUTH_JWT_ISSUER` | Có | `cyverse-backend` |
 | `AUTH_JWT_AUDIENCE` | Có | `cyverse-internal-web` |
@@ -107,9 +114,6 @@ Khai báo trong mục **Environment Variables** của Web Service trên Render:
 | `AUTH_REFRESH_TOKEN_DAYS` | Có | `30` |
 | `CORS_ORIGINS` | Có | Danh sách domain frontend được phép truy cập, phân cách bằng dấu phẩy: `https://<ten-ung-dung>.vercel.app,http://localhost:3000` |
 | `CORS_ORIGIN_REGEX` | Tùy chọn | `^https:\/\/.*\.vercel\.app$` (Cho phép tất cả Vercel preview branch deployments kết nối). |
-| `SUPABASE_POOLER_REGION` | Khi dùng Supabase IPv4 | Ví dụ `ap-southeast-2` (Render mạng IPv4 cần pooler port 5432). |
-| `SUPABASE_URL` | Khi bật Supabase | URL project Supabase. |
-| `SUPABASE_KEY` | Khi bật Supabase | Secret key server-side của Supabase. |
 | `GROQ_API_KEY` | Khi dùng Groq AI | API key phía server. |
 | `OPENROUTER_API_KEY` | Khi dùng OpenRouter | API key phía server. |
 | `GEMINI_API_KEY` | Khi dùng Google Gemini | API key phía server. |

@@ -17,6 +17,47 @@ const users = [
   },
 ];
 const researchSessions = [];
+const threadsRuns = [];
+const threadsDefaults = {
+  keywords: [], max_posts_per_keyword: 25, search_type: "recent", include_comments: true,
+  max_comment_posts: -1, max_comments_per_post: 25, min_replies: 0,
+  expand_query: true, keywords_per_query: 3, pre_filter: false, pre_filter_strictness: "high", curate: false,
+  max_accounts: 3, use_proxy: true,
+};
+
+function threadsDetail(run) {
+  if (run.status !== "cancelled") {
+    const elapsed = Date.now() - Date.parse(run.created_at);
+    run.status = elapsed > 6000 ? "completed" : elapsed > 1000 ? "running" : "queued";
+  }
+  const complete = run.status === "completed";
+  return {
+    ...run,
+    visibility: run.visibility ?? run.request.visibility ?? "public",
+    owner: { id: users[0].id, display_name: users[0].display_name }, can_manage: true,
+    post_count: complete ? 1 : 0, comment_count: complete ? 2 : 0,
+    archive_status: complete ? "ready" : "pending", archive_uploaded_at: complete ? now() : null,
+    storage_error: null, deletion_requested: false, started_at: run.created_at,
+    stage: complete ? "completed" : run.status === "running" ? "curating" : run.status,
+    progress: complete ? 1 : run.status === "running" ? 0.8 : 0,
+    completed_at: complete || run.status === "cancelled" ? now() : null,
+    result: complete ? {
+      query: run.request.query, keywords: run.request.keywords.length ? run.request.keywords : ["quiet cafes"],
+      curated_post_ids: ["fixture-post"], total_comments: 2, duration_seconds: 6,
+      warnings: [], posts: [{
+        post_id: "fixture-post", url: "https://www.threads.com/@fixture/post/abcdef1",
+        username: "fixture", text: "A quiet cafe with a reading corner and great coffee.",
+        published_at: "2026-10-31T10:00:00Z", like_count: 42, reply_count: 5, repost_count: 3,
+        images: [], videos: [], search_keywords: ["quiet cafes"],
+        comments: [
+          { id: "c1", username: "reader", text: "The upstairs corner is peaceful.", like_count: 4, depth: 1, reply_to_username: null, parent_id: null },
+          { id: "c2", username: "visitor", text: "Weekday mornings are the quietest.", like_count: 2, depth: 2, reply_to_username: "reader", parent_id: "c1" },
+        ],
+        ai_analysis: { is_relevant: true, confidence_score: 0.95, topic: "Quiet places to read", summary: "A reading-friendly cafe, best visited on weekday mornings.", recommended_places: [], key_entities: ["reading", "coffee"], sentiment: "positive" },
+      }],
+    } : null,
+  };
+}
 const researchConfig = {
   schema_version: "1",
   default_visibility: "public",
@@ -184,6 +225,54 @@ export async function startFakeBackend() {
     actor.password = data.new_password;
     actor.token_version += 1;
     return send(response, 200, tokenPair(actor));
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/tools/threads/config") {
+    return send(response, 200, {
+      enabled: true, accounts_ready: true, ai_available: true, cloudinary_ready: true, defaults: threadsDefaults,
+      limits: { keywords: 5, posts_per_keyword: 50, comment_posts: 20, comments_per_post: 100 },
+    });
+  }
+  if (url.pathname === "/api/v1/tools/threads/runs") {
+    if (request.method === "GET") {
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      const limit = Number(url.searchParams.get("limit") ?? 20);
+      return send(response, 200, threadsRuns.slice(offset, offset + limit).map((run) => ({ ...threadsDetail(run), result: null })));
+    }
+    if (request.method === "POST") {
+      const run = {
+        id: randomUUID(), request: { ...threadsDefaults, ...await readJson(request) },
+        status: "queued", stage: "queued", progress: 0, result: null,
+        error_code: null, error_message: null, created_at: now(), completed_at: null,
+      };
+      threadsRuns.unshift(run);
+      return send(response, 202, threadsDetail(run));
+    }
+  }
+  const threadsMatch = url.pathname.match(/^\/api\/v1\/tools\/threads\/runs\/([^/]+)(?:\/(cancel|export))?$/);
+  if (threadsMatch) {
+    const run = threadsRuns.find((item) => item.id === threadsMatch[1]);
+    if (!run) return send(response, 404, { detail: "Threads run not found." });
+    if (threadsMatch[2] === "cancel" && request.method === "POST") run.status = "cancelled";
+    if (!threadsMatch[2] && request.method === "PATCH") {
+      run.visibility = (await readJson(request)).visibility;
+    }
+    if (!threadsMatch[2] && request.method === "DELETE") {
+      const detail = threadsDetail(run);
+      threadsRuns.splice(threadsRuns.indexOf(run), 1);
+      return send(response, 202, { ...detail, deletion_requested: true });
+    }
+    const detail = threadsDetail(run);
+    if (threadsMatch[2] === "export") {
+      if (!detail.result) return send(response, 409, { detail: "Result not ready" });
+      const format = url.searchParams.get("format") ?? "json";
+      response.writeHead(200, {
+        "Content-Type": format === "txt" ? "text/plain" : "application/json",
+        "Content-Disposition": `attachment; filename="threads-${run.id}.${format}"`,
+      });
+      return response.end(format === "txt" ? "THREADS SESSION\nFormat: threads-text-v2\nCOLLECTED COMMENTS\n" : JSON.stringify(detail.result));
+    }
+    return send(response, 200, detail);
   }
 
   if (request.method === "GET" && url.pathname === "/api/v1/tools/research/config") {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -21,6 +22,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
 from app.models.user import User
+
+if TYPE_CHECKING:
+    from app.models.threads import ThreadsResultRecord
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 
@@ -57,6 +61,9 @@ class ToolRun(TimestampMixin, Base):
         back_populates="run", cascade="all, delete-orphan", order_by="ToolRunEvent.sequence"
     )
     owner: Mapped[User] = relationship()
+    threads_result: Mapped[ThreadsResultRecord | None] = relationship(
+        lazy="raise", uselist=False, cascade="all, delete-orphan", single_parent=True
+    )
 
 
 class ToolRunEvent(Base):

@@ -5,6 +5,7 @@ export interface AuthUser {
   username: string;
   display_name: string;
   team: string | null;
+  notebooklm_email?: string | null;
   role: UserRole;
   is_active: boolean;
   created_at: string;
@@ -58,6 +59,7 @@ export function isAuthUser(value: unknown): value is AuthUser {
     typeof candidate.username === "string" &&
     typeof candidate.display_name === "string" &&
     (typeof candidate.team === "string" || candidate.team === null) &&
+    (typeof candidate.notebooklm_email === "string" || candidate.notebooklm_email === null || candidate.notebooklm_email === undefined) &&
     (candidate.role === "admin" || candidate.role === "member") &&
     typeof candidate.is_active === "boolean" &&
     typeof candidate.created_at === "string" &&

@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { logoutAction } from "@/features/auth/actions";
+import { useLanguage } from "@/lib/i18n/context";
 import type { AuthUser } from "@/lib/auth/types";
 
 function userInitials(user: AuthUser): string {
@@ -29,6 +30,7 @@ function userInitials(user: AuthUser): string {
 export function AccountMenu({ user }: { user: AuthUser }) {
   const router = useRouter();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const { t } = useLanguage();
   const initials = userInitials(user);
 
   const handleSignOut = async () => {
@@ -62,7 +64,7 @@ export function AccountMenu({ user }: { user: AuthUser }) {
             {user.display_name}
           </strong>
           <small className="block truncate text-xs text-slate-500">
-            {user.role === "admin" ? "Administrator" : user.team ?? "Member"}
+            {user.role === "admin" ? t("account.adminRole") : user.team ?? t("account.memberRole")}
           </small>
         </div>
         <ChevronDown className="h-4 w-4 text-slate-400 transition-transform duration-200" />
@@ -91,8 +93,8 @@ export function AccountMenu({ user }: { user: AuthUser }) {
               <Settings className="h-4 w-4" />
             </div>
             <div>
-              <strong className="block text-sm font-medium text-slate-800">Account settings</strong>
-              <small className="block text-xs text-slate-500">Profile & security</small>
+              <strong className="block text-sm font-medium text-slate-800">{t("account.settings")}</strong>
+              <small className="block text-xs text-slate-500">{t("account.profileSecurity")}</small>
             </div>
           </Link>
         </DropdownMenuItem>
@@ -106,8 +108,8 @@ export function AccountMenu({ user }: { user: AuthUser }) {
                 <Shield className="h-4 w-4" />
               </div>
               <div>
-                <strong className="block text-sm font-medium text-slate-800">User Management</strong>
-                <small className="block text-xs text-slate-500">Manage accounts & roles</small>
+                <strong className="block text-sm font-medium text-slate-800">{t("account.userManagement")}</strong>
+                <small className="block text-xs text-slate-500">{t("account.manageAccounts")}</small>
               </div>
             </Link>
           </DropdownMenuItem>
@@ -126,9 +128,9 @@ export function AccountMenu({ user }: { user: AuthUser }) {
           </div>
           <div>
             <strong className="block text-sm font-medium">
-              {isSigningOut ? "Signing out…" : "Sign out"}
+              {isSigningOut ? t("account.signingOut") : t("account.signOut")}
             </strong>
-            <small className="block text-xs text-red-400">End this session</small>
+            <small className="block text-xs text-red-400">{t("account.endSession")}</small>
           </div>
         </DropdownMenuItem>
       </DropdownMenuContent>

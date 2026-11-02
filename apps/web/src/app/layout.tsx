@@ -34,6 +34,7 @@ export const metadata: Metadata = {
   },
 };
 
+import { LanguageProvider } from "@/lib/i18n/context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -42,8 +43,10 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     <html lang="en" className={plusJakartaSans.variable} suppressHydrationWarning>
       <body className={plusJakartaSans.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          {children}
-          <Toaster position="top-right" richColors />
+          <LanguageProvider>
+            {children}
+            <Toaster position="top-right" richColors />
+          </LanguageProvider>
         </ThemeProvider>
       </body>
     </html>

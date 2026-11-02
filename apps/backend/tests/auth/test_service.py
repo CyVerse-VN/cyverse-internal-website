@@ -182,6 +182,31 @@ async def test_deactivating_an_account_invalidates_its_existing_tokens() -> None
 
 
 @pytest.mark.asyncio
+async def test_admin_and_member_can_update_preferred_notebooklm_email() -> None:
+    admin = make_user(role=ROLE_ADMIN)
+    admin.username = "admin"
+    member = make_user()
+    service = AuthService(cast(AuthRepository, FakeAuthRepository([admin, member])))
+
+    await service.update_user(
+        actor=admin,
+        user_id=member.id,
+        request=UpdateUserRequest(notebooklm_email="First@Example.com"),
+    )
+    assert member.notebooklm_email == "first@example.com"
+
+    await service.update_profile(
+        user=member,
+        request=UpdateProfileRequest(
+            display_name=member.display_name,
+            team=member.team,
+            notebooklm_email="Second@Example.com",
+        ),
+    )
+    assert member.notebooklm_email == "second@example.com"
+
+
+@pytest.mark.asyncio
 async def test_create_user_stores_an_argon2_password_hash() -> None:
     repository = FakeAuthRepository([])
     service = AuthService(cast(AuthRepository, repository))

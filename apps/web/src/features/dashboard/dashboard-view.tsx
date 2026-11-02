@@ -17,6 +17,8 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
+import { useLanguage } from "@/lib/i18n/context";
 import type { AuthUser } from "@/lib/auth/types";
 
 
@@ -78,6 +80,7 @@ export function DashboardView({
   const [query, setQuery] = useState("");
   const tools = useMemo(() => filterTools(query), [query]);
   const firstName = user.display_name.split(/\s+/)[0] || user.username;
+  const { t } = useLanguage();
 
   return (
     <main className="dashboard-page">
@@ -88,7 +91,7 @@ export function DashboardView({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search tools, models, datasets…"
+            placeholder={t("topbar.searchPlaceholder")}
           />
         </label>
         <button
@@ -98,6 +101,7 @@ export function DashboardView({
         >
           <Bell className="h-4 w-4" />
         </button>
+        <LanguageToggle />
         <ThemeToggle />
         {accountMenu}
       </header>
@@ -106,20 +110,20 @@ export function DashboardView({
       <div className="dashboard-body">
         {notice === "admin-required" && (
           <p className="notice-banner" role="status">
-            Administrator access is required for User Management.
+            {t("dashboard.adminRequiredNotice")}
           </p>
         )}
         <section className="welcome-row">
           <div>
-            <span className="demo-pill">Demo data</span>
+            <span className="demo-pill">{t("dashboard.demoPill")}</span>
             <h1>
-              Hello, {firstName} <span aria-hidden="true">👋</span>
+              {t("dashboard.greeting")}, {firstName} <span aria-hidden="true">👋</span>
             </h1>
-            <p>Welcome to CyVerse Internal Tools</p>
-            <small>Build, experiment, and deploy explainable deepfake detection — together.</small>
+            <p>{t("dashboard.subtitle")}</p>
+            <small>{t("dashboard.tagline")}</small>
           </div>
           <blockquote>
-            “More trustworthy media for a safer tomorrow.”<cite>— CyVerse</cite>
+            {t("dashboard.quote")}<cite>{t("dashboard.quoteAuthor")}</cite>
           </blockquote>
         </section>
 
@@ -129,7 +133,7 @@ export function DashboardView({
               <Wrench className="h-5 w-5" />
             </span>
             <strong>
-              6<small>Available Tools</small>
+              6<small>{t("dashboard.availableToolsMetric")}</small>
             </strong>
             <b>
               <ArrowRight className="h-4 w-4" />
@@ -140,7 +144,7 @@ export function DashboardView({
               <Database className="h-5 w-5" />
             </span>
             <strong>
-              12<small>Datasets</small>
+              12<small>{t("dashboard.datasetsMetric")}</small>
             </strong>
             <b>
               <ArrowRight className="h-4 w-4" />
@@ -151,7 +155,7 @@ export function DashboardView({
               <FlaskConical className="h-5 w-5" />
             </span>
             <strong>
-              8<small>Experiments</small>
+              8<small>{t("dashboard.experimentsMetric")}</small>
             </strong>
             <b>
               <ArrowRight className="h-4 w-4" />
@@ -162,7 +166,7 @@ export function DashboardView({
               <Users className="h-5 w-5" />
             </span>
             <strong>
-              5<small>Team Members</small>
+              5<small>{t("dashboard.teamMembersMetric")}</small>
             </strong>
             <b>
               <ArrowRight className="h-4 w-4" />
@@ -172,22 +176,42 @@ export function DashboardView({
 
         <section className="dashboard-section">
           <div className="section-heading">
-            <h2>Popular Tools</h2>
-            <span>Curated for your team</span>
+            <h2>{t("dashboard.popularTools")}</h2>
+            <span>{t("dashboard.popularToolsSubtitle")}</span>
           </div>
           {tools.length ? (
             <div className="tool-grid">
               {tools.map((tool) => {
                 const Icon = TOOL_ICONS[tool.name] ?? Wrench;
+                const toolTitle =
+                  tool.name === "Deepfake Detection"
+                    ? t("dashboard.deepfakeTitle")
+                    : tool.name === "Video Analysis"
+                      ? t("dashboard.videoTitle")
+                      : tool.name === "Explainability Viewer"
+                        ? t("dashboard.explainTitle")
+                        : tool.name === "Dataset Manager"
+                          ? t("dashboard.datasetTitle")
+                          : tool.name;
+                const toolDesc =
+                  tool.name === "Deepfake Detection"
+                    ? t("dashboard.deepfakeDesc")
+                    : tool.name === "Video Analysis"
+                      ? t("dashboard.videoDesc")
+                      : tool.name === "Explainability Viewer"
+                        ? t("dashboard.explainDesc")
+                        : tool.name === "Dataset Manager"
+                          ? t("dashboard.datasetDesc")
+                          : tool.description;
                 return (
                   <article className="tool-card hover:shadow-lg transition-all" key={tool.name}>
                     <span className={`tool-icon tool-icon--${tool.tone}`}>
                       <Icon className="h-5 w-5" />
                     </span>
-                    <h3>{tool.name}</h3>
-                    <p>{tool.description}</p>
+                    <h3>{toolTitle}</h3>
+                    <p>{toolDesc}</p>
                     <button type="button" disabled>
-                      Coming soon
+                      {t("dashboard.comingSoon")}
                     </button>
                   </article>
                 );
@@ -195,27 +219,27 @@ export function DashboardView({
             </div>
           ) : (
             <div className="empty-state">
-              <strong>No tools found</strong>
-              <p>Try a different search term.</p>
+              <strong>{t("dashboard.noToolsFound")}</strong>
+              <p>{t("dashboard.noToolsDesc")}</p>
             </div>
           )}
         </section>
 
         <section className="dashboard-section">
           <div className="section-heading">
-            <h2>Recent Activity</h2>
-            <span>Sample activity</span>
+            <h2>{t("dashboard.recentActivity")}</h2>
+            <span>{t("dashboard.sampleActivity")}</span>
           </div>
           <div className="activity-list hover:shadow-sm transition-shadow">
             <div className="activity-icon bg-blue-100 text-blue-700">
               <CheckCircle2 className="h-5 w-5" />
             </div>
             <div>
-              <strong>Deepfake Detection analysis completed</strong>
-              <p>Sample video · 2 hours ago</p>
+              <strong>{t("dashboard.activityItemTitle")}</strong>
+              <p>{t("dashboard.activityItemMeta")}</p>
             </div>
             <Badge variant="success" className="ml-auto">
-              Completed
+              {t("dashboard.completed")}
             </Badge>
           </div>
         </section>

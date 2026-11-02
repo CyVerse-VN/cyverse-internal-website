@@ -23,13 +23,9 @@ import {
   toggleUserStatusAction,
   updateUserAction,
 } from "@/features/admin/actions";
+import { useLanguage } from "@/lib/i18n/context";
 import type { AuthUser, UserListResponse } from "@/lib/auth/types";
 import { INITIAL_ACTION_STATE } from "@/lib/auth/types";
-
-const userDateFormatter = new Intl.DateTimeFormat("en", {
-  dateStyle: "medium",
-  timeZone: "UTC",
-});
 
 function initials(name: string): string {
   return name
@@ -89,6 +85,7 @@ function DialogHeading({
 function CreateUserDialog() {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, action] = useActionState(createUserAction, INITIAL_ACTION_STATE);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (state.status === "success") {
@@ -105,7 +102,7 @@ function CreateUserDialog() {
         onClick={() => dialogRef.current?.showModal()}
       >
         <UserPlus className="h-4 w-4" aria-hidden="true" />
-        <span>New User</span>
+        <span>{t("admin.newUser")}</span>
       </button>
       <dialog
         className="dialog dialog--account"
@@ -119,16 +116,18 @@ function CreateUserDialog() {
       >
         <form action={action} className="admin-form">
           <DialogHeading
-            eyebrow="Account provisioning"
-            title="Create user"
-            description="Set up a secure workspace account and assign its initial access level."
+            eyebrow={t("admin.createEyebrow")}
+            title={t("admin.createTitle")}
+            description={t("admin.createDesc")}
             icon={UserPlus}
             titleId="create-user-title"
             onClose={() => dialogRef.current?.close()}
           />
           <div className="admin-form__body">
             <label className="form-field">
-              <span className="field-label">Username <b>Required</b></span>
+              <span className="field-label">
+                {t("admin.username")} <b>{t("admin.required")}</b>
+              </span>
               <input
                 className="field-control"
                 name="username"
@@ -143,41 +142,86 @@ function CreateUserDialog() {
                 aria-describedby="username-rule"
               />
               <small className="field-hint" id="username-rule">
-                3–64 characters, no spaces. Use letters, numbers, dots, underscores, or hyphens.
+                {t("admin.usernameHint")}
               </small>
             </label>
             <div className="form-grid">
               <label className="form-field">
-                <span className="field-label">Display name <b>Required</b></span>
-                <input className="field-control" name="display_name" required maxLength={100} placeholder="e.g. CyVerse" />
-                <small className="field-hint">The name shown to teammates.</small>
+                <span className="field-label">
+                  {t("admin.displayName")} <b>{t("admin.required")}</b>
+                </span>
+                <input
+                  className="field-control"
+                  name="display_name"
+                  required
+                  maxLength={100}
+                  placeholder="e.g. CyVerse"
+                />
+                <small className="field-hint">{t("admin.displayNameHint")}</small>
               </label>
               <label className="form-field">
-                <span className="field-label">Team</span>
-                <input className="field-control" name="team" maxLength={100} placeholder="e.g. Data Platform" />
-                <small className="field-hint">Optional organizational group.</small>
+                <span className="field-label">{t("admin.team")}</span>
+                <input
+                  className="field-control"
+                  name="team"
+                  maxLength={100}
+                  placeholder="e.g. Data Platform"
+                />
+                <small className="field-hint">{t("admin.teamHint")}</small>
               </label>
             </div>
             <div className="form-grid">
               <label className="form-field">
-                <span className="field-label">Role <b>Required</b></span>
+                <span className="field-label">
+                  {t("admin.role")} <b>{t("admin.required")}</b>
+                </span>
                 <select className="field-control" name="role" defaultValue="member">
-                  <option value="member">Member</option>
-                  <option value="admin">Administrator</option>
+                  <option value="member">{t("admin.member")}</option>
+                  <option value="admin">{t("admin.administrator")}</option>
                 </select>
-                <small className="field-hint">Administrators can manage all accounts.</small>
+                <small className="field-hint">{t("admin.roleHint")}</small>
               </label>
               <label className="form-field">
-                <span className="field-label">Temporary password <b>Required</b></span>
-                <input className="field-control" name="password" type="password" required minLength={8} maxLength={128} autoComplete="new-password" placeholder="At least 8 characters" />
-                <small className="field-hint">Use 8–128 characters.</small>
+                <span className="field-label">
+                  {t("admin.tempPassword")} <b>{t("admin.required")}</b>
+                </span>
+                <input
+                  className="field-control"
+                  name="password"
+                  type="password"
+                  required
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  placeholder="At least 8 characters"
+                />
+                <small className="field-hint">{t("admin.tempPasswordHint")}</small>
               </label>
             </div>
+            <label className="form-field">
+              <span className="field-label">{t("admin.notebooklmEmail")}</span>
+              <input
+                className="field-control"
+                name="notebooklm_email"
+                type="email"
+                maxLength={320}
+                placeholder="researcher@gmail.com"
+              />
+              <small className="field-hint">{t("admin.notebooklmHint")}</small>
+            </label>
             <ActionMessage {...state} />
           </div>
           <div className="dialog__actions dialog__actions--footer">
-            <button className="secondary-button" type="button" onClick={() => dialogRef.current?.close()}>Cancel</button>
-            <SubmitButton className="primary-button" pendingLabel="Creating…">Create user</SubmitButton>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => dialogRef.current?.close()}
+            >
+              {t("admin.cancel")}
+            </button>
+            <SubmitButton className="primary-button" pendingLabel={t("admin.creating")}>
+              {t("admin.createUser")}
+            </SubmitButton>
           </div>
         </form>
       </dialog>
@@ -191,6 +235,7 @@ function UserActions({ user, currentUserId }: { user: AuthUser; currentUserId: s
   const [editState, editAction] = useActionState(updateUserAction, INITIAL_ACTION_STATE);
   const [passwordState, passwordAction] = useActionState(resetPasswordAction, INITIAL_ACTION_STATE);
   const [statusState, statusAction] = useActionState(toggleUserStatusAction, INITIAL_ACTION_STATE);
+  const { t } = useLanguage();
   const isSelf = user.id === currentUserId;
 
   useEffect(() => {
@@ -210,25 +255,26 @@ function UserActions({ user, currentUserId }: { user: AuthUser; currentUserId: s
   return (
     <div className="table-actions flex items-center gap-1.5">
       <button
-        className="table-button inline-flex items-center gap-1 hover:bg-blue-100 transition-colors"
+        className="table-button inline-flex items-center gap-1 hover:bg-blue-100 dark:hover:bg-blue-950/60 transition-colors"
         type="button"
         onClick={() => editRef.current?.showModal()}
       >
         <Pencil className="h-3 w-3" />
-        <span>Edit</span>
+        <span>{t("admin.edit")}</span>
       </button>
       <button
-        className="table-button inline-flex items-center gap-1 hover:bg-blue-100 transition-colors"
+        className="table-button inline-flex items-center gap-1 hover:bg-blue-100 dark:hover:bg-blue-950/60 transition-colors"
         type="button"
         onClick={() => passwordRef.current?.showModal()}
       >
         <KeyRound className="h-3 w-3" />
-        <span>Password</span>
+        <span>{t("admin.password")}</span>
       </button>
       <form
         action={statusAction}
         onSubmit={(event) => {
-          if (!window.confirm(`${user.is_active ? "Deactivate" : "Activate"} ${user.username}?`)) {
+          const actionText = user.is_active ? t("admin.confirmDeactivate") : t("admin.confirmActivate");
+          if (!window.confirm(`${actionText} ${user.username}?`)) {
             event.preventDefault();
           }
         }}
@@ -236,19 +282,19 @@ function UserActions({ user, currentUserId }: { user: AuthUser; currentUserId: s
         <input type="hidden" name="user_id" value={user.id} />
         <input type="hidden" name="is_active" value={String(!user.is_active)} />
         <button
-          className="table-button inline-flex items-center gap-1 hover:bg-slate-200 transition-colors"
+          className="table-button inline-flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
           type="submit"
           disabled={isSelf}
         >
           {user.is_active ? (
             <>
               <UserX className="h-3 w-3 text-red-500" />
-              <span>Deactivate</span>
+              <span>{t("admin.deactivate")}</span>
             </>
           ) : (
             <>
-              <UserCheck className="h-3 w-3 text-emerald-600" />
-              <span>Activate</span>
+              <UserCheck className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+              <span>{t("admin.activate")}</span>
             </>
           )}
         </button>
@@ -268,52 +314,87 @@ function UserActions({ user, currentUserId }: { user: AuthUser; currentUserId: s
         <form action={editAction} className="admin-form">
           <input type="hidden" name="user_id" value={user.id} />
           <DialogHeading
-            eyebrow="Account administration"
-            title="Edit user"
-            description="Update this member's workspace profile and access level."
+            eyebrow={t("admin.editEyebrow")}
+            title={t("admin.editTitle")}
+            description={t("admin.editDesc")}
             icon={UserCog}
             titleId={`edit-${user.id}`}
             onClose={() => editRef.current?.close()}
           />
           <div className="admin-form__body">
-            <div className="dialog-user-identity flex items-center gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50/70">
+            <div className="dialog-user-identity flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
               <Avatar className="h-10 w-10">
                 <AvatarFallback>{initials(user.display_name)}</AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <strong className="block text-sm font-semibold text-slate-800">{user.display_name}</strong>
-                <small className="text-slate-500">@{user.username}</small>
+                <strong className="block text-sm font-semibold text-slate-800 dark:text-slate-100">{user.display_name}</strong>
+                <small className="text-slate-500 dark:text-slate-400">@{user.username}</small>
               </div>
               <Badge variant={user.is_active ? "success" : "warning"}>
-                {user.is_active ? "Active" : "Inactive"}
+                {user.is_active ? t("admin.active") : t("admin.inactive")}
               </Badge>
             </div>
             <div className="form-grid">
               <label className="form-field">
-                <span className="field-label">Display name <b>Required</b></span>
-                <input className="field-control" name="display_name" required maxLength={100} defaultValue={user.display_name} placeholder="e.g. CyVerse" />
-                <small className="field-hint">The name shown across the workspace.</small>
+                <span className="field-label">
+                  {t("admin.displayName")} <b>{t("admin.required")}</b>
+                </span>
+                <input
+                  className="field-control"
+                  name="display_name"
+                  required
+                  maxLength={100}
+                  defaultValue={user.display_name}
+                  placeholder="e.g. CyVerse"
+                />
+                <small className="field-hint">{t("admin.displayNameHint")}</small>
               </label>
               <label className="form-field">
-                <span className="field-label">Team</span>
-                <input className="field-control" name="team" maxLength={100} defaultValue={user.team ?? ""} placeholder="e.g. Data Platform" />
-                <small className="field-hint">Optional organizational group.</small>
+                <span className="field-label">{t("admin.team")}</span>
+                <input
+                  className="field-control"
+                  name="team"
+                  maxLength={100}
+                  defaultValue={user.team ?? ""}
+                  placeholder="e.g. Data Platform"
+                />
+                <small className="field-hint">{t("admin.teamHint")}</small>
               </label>
             </div>
             <label className="form-field">
-              <span className="field-label">Role <b>Required</b></span>
+              <span className="field-label">{t("admin.notebooklmEmail")}</span>
+              <input
+                className="field-control"
+                name="notebooklm_email"
+                type="email"
+                maxLength={320}
+                defaultValue={user.notebooklm_email ?? ""}
+                placeholder="researcher@gmail.com"
+              />
+              <small className="field-hint">{t("admin.notebooklmHint")}</small>
+            </label>
+            <label className="form-field">
+              <span className="field-label">
+                {t("admin.role")} <b>{t("admin.required")}</b>
+              </span>
               <select className="field-control" name="role" defaultValue={user.role} disabled={isSelf}>
-                <option value="member">Member</option>
-                <option value="admin">Administrator</option>
+                <option value="member">{t("admin.member")}</option>
+                <option value="admin">{t("admin.administrator")}</option>
               </select>
               {isSelf && <input type="hidden" name="role" value={user.role} />}
-              <small className="field-hint">{isSelf ? "Use another administrator account to change your role." : "Administrators can manage all accounts."}</small>
+              <small className="field-hint">
+                {isSelf ? t("admin.selfRoleHint") : t("admin.roleHint")}
+              </small>
             </label>
             <ActionMessage {...editState} />
           </div>
           <div className="dialog__actions dialog__actions--footer">
-            <button className="secondary-button" type="button" onClick={() => editRef.current?.close()}>Cancel</button>
-            <SubmitButton className="primary-button" pendingLabel="Saving…">Save changes</SubmitButton>
+            <button className="secondary-button" type="button" onClick={() => editRef.current?.close()}>
+              {t("admin.cancel")}
+            </button>
+            <SubmitButton className="primary-button" pendingLabel={t("admin.saving")}>
+              {t("admin.saveChanges")}
+            </SubmitButton>
           </div>
         </form>
       </dialog>
@@ -331,33 +412,48 @@ function UserActions({ user, currentUserId }: { user: AuthUser; currentUserId: s
         <form action={passwordAction} className="admin-form">
           <input type="hidden" name="user_id" value={user.id} />
           <DialogHeading
-            eyebrow="Account security"
-            title="Reset password"
-            description="Set a new temporary password and revoke this user's existing sessions."
+            eyebrow={t("admin.passwordEyebrow")}
+            title={t("admin.passwordTitle")}
+            description={t("admin.passwordDesc")}
             icon={KeyRound}
             titleId={`password-${user.id}`}
             onClose={() => passwordRef.current?.close()}
           />
           <div className="admin-form__body">
-            <div className="dialog-user-identity flex items-center gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50/70">
+            <div className="dialog-user-identity flex items-center gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60">
               <Avatar className="h-10 w-10">
                 <AvatarFallback>{initials(user.display_name)}</AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <strong className="block text-sm font-semibold text-slate-800">{user.display_name}</strong>
-                <small className="text-slate-500">@{user.username}</small>
+                <strong className="block text-sm font-semibold text-slate-800 dark:text-slate-100">{user.display_name}</strong>
+                <small className="text-slate-500 dark:text-slate-400">@{user.username}</small>
               </div>
             </div>
             <label className="form-field">
-              <span className="field-label">New temporary password <b>Required</b></span>
-              <input className="field-control" name="password" type="password" required minLength={8} maxLength={128} autoComplete="new-password" placeholder="At least 8 characters" />
-              <small className="field-hint">Use 8–128 characters. All existing tokens for this user will be invalidated.</small>
+              <span className="field-label">
+                {t("admin.newTempPassword")} <b>{t("admin.required")}</b>
+              </span>
+              <input
+                className="field-control"
+                name="password"
+                type="password"
+                required
+                minLength={8}
+                maxLength={128}
+                autoComplete="new-password"
+                placeholder="At least 8 characters"
+              />
+              <small className="field-hint">{t("admin.newTempPasswordHint")}</small>
             </label>
             <ActionMessage {...passwordState} />
           </div>
           <div className="dialog__actions dialog__actions--footer">
-            <button className="secondary-button" type="button" onClick={() => passwordRef.current?.close()}>Cancel</button>
-            <SubmitButton className="primary-button" pendingLabel="Updating…">Update password</SubmitButton>
+            <button className="secondary-button" type="button" onClick={() => passwordRef.current?.close()}>
+              {t("admin.cancel")}
+            </button>
+            <SubmitButton className="primary-button" pendingLabel={t("admin.updating")}>
+              {t("admin.updatePassword")}
+            </SubmitButton>
           </div>
         </form>
       </dialog>
@@ -365,9 +461,18 @@ function UserActions({ user, currentUserId }: { user: AuthUser; currentUserId: s
   );
 }
 
-export function UserManagement({ data, currentUserId, query }: { data: UserListResponse; currentUserId: string; query: string }) {
+export function UserManagement({
+  data,
+  currentUserId,
+  query,
+}: {
+  data: UserListResponse;
+  currentUserId: string;
+  query: string;
+}) {
   const router = useRouter();
   const [isSearchPending, startSearchTransition] = useTransition();
+  const { t, language } = useLanguage();
   const totalPages = Math.max(1, Math.ceil(data.total / data.page_size));
   const pageHref = (page: number) => `/admin/users?page=${page}${query ? `&query=${encodeURIComponent(query)}` : ""}`;
 
@@ -379,25 +484,35 @@ export function UserManagement({ data, currentUserId, query }: { data: UserListR
     startSearchTransition(() => router.push(nextPath));
   }
 
+  const dateFormatter = new Intl.DateTimeFormat(language === "vi" ? "vi-VN" : "en", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  });
+
   return (
     <main className="admin-page">
       <header className="admin-header">
         <div>
-          <p className="eyebrow eyebrow--blue">Administration</p>
-          <h1>User Management</h1>
-          <p>Create accounts and control access to the internal workspace.</p>
+          <p className="eyebrow eyebrow--blue">{t("admin.eyebrow")}</p>
+          <h1>{t("admin.heading")}</h1>
+          <p>{t("admin.subheading")}</p>
         </div>
         <CreateUserDialog />
       </header>
       <section className="admin-card">
         <form className="user-search" onSubmit={submitSearch}>
           <label className="flex items-center gap-2">
-            <span className="sr-only">Search users</span>
+            <span className="sr-only">{t("admin.searchPlaceholder")}</span>
             <Search className="h-4 w-4 text-slate-400 shrink-0" aria-hidden="true" />
-            <input name="query" defaultValue={query} maxLength={100} placeholder="Search by name, username, or team…" />
+            <input
+              name="query"
+              defaultValue={query}
+              maxLength={100}
+              placeholder={t("admin.searchPlaceholder")}
+            />
           </label>
           <button className="secondary-button" type="submit" disabled={isSearchPending}>
-            {isSearchPending ? "Searching…" : "Search"}
+            {isSearchPending ? t("admin.searching") : t("admin.search")}
           </button>
         </form>
         {data.items.length ? (
@@ -405,12 +520,13 @@ export function UserManagement({ data, currentUserId, query }: { data: UserListR
             <table>
               <thead>
                 <tr>
-                  <th>User</th>
-                  <th>Team</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th><span className="sr-only">Actions</span></th>
+                  <th>{t("admin.username")}</th>
+                  <th>{t("admin.team")}</th>
+                  <th>{t("admin.notebooklmEmail")}</th>
+                  <th>{t("admin.role")}</th>
+                  <th>{t("admin.status")}</th>
+                  <th>{t("admin.created")}</th>
+                  <th><span className="sr-only">{t("admin.actions")}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -430,17 +546,18 @@ export function UserManagement({ data, currentUserId, query }: { data: UserListR
                       </div>
                     </td>
                     <td>{user.team ?? "—"}</td>
+                    <td>{user.notebooklm_email ?? "—"}</td>
                     <td>
                       <Badge variant={user.role === "admin" ? "default" : "secondary"}>
-                        {user.role}
+                        {user.role === "admin" ? t("admin.administrator") : t("admin.member")}
                       </Badge>
                     </td>
                     <td>
                       <Badge variant={user.is_active ? "success" : "warning"}>
-                        {user.is_active ? "Active" : "Inactive"}
+                        {user.is_active ? t("admin.active") : t("admin.inactive")}
                       </Badge>
                     </td>
-                    <td>{userDateFormatter.format(new Date(user.created_at))}</td>
+                    <td>{dateFormatter.format(new Date(user.created_at))}</td>
                     <td><UserActions user={user} currentUserId={currentUserId} /></td>
                   </tr>
                 ))}
@@ -449,20 +566,37 @@ export function UserManagement({ data, currentUserId, query }: { data: UserListR
           </div>
         ) : (
           <div className="empty-state">
-            <strong>No users found</strong>
-            <p>Try another search or create a new account.</p>
+            <strong>{t("admin.emptyTitle")}</strong>
+            <p>{t("admin.emptyDesc")}</p>
           </div>
         )}
         <footer className="pagination">
-          <span>{data.total} user{data.total === 1 ? "" : "s"}</span>
+          <span>
+            {data.total} {data.total === 1 ? t("admin.userCount") : t("admin.usersCount")}
+          </span>
           <div>
-            <Link aria-disabled={data.page <= 1} className={data.page <= 1 ? "disabled" : ""} href={pageHref(Math.max(1, data.page - 1))}>Previous</Link>
-            <span>Page {data.page} of {totalPages}</span>
-            <Link aria-disabled={data.page >= totalPages} className={data.page >= totalPages ? "disabled" : ""} href={pageHref(Math.min(totalPages, data.page + 1))}>Next</Link>
+            <Link
+              aria-disabled={data.page <= 1}
+              className={data.page <= 1 ? "disabled" : ""}
+              href={pageHref(Math.max(1, data.page - 1))}
+            >
+              {t("admin.previous")}
+            </Link>
+            <span>
+              {language === "vi"
+                ? `Trang ${data.page} / ${totalPages}`
+                : `Page ${data.page} of ${totalPages}`}
+            </span>
+            <Link
+              aria-disabled={data.page >= totalPages}
+              className={data.page >= totalPages ? "disabled" : ""}
+              href={pageHref(Math.min(totalPages, data.page + 1))}
+            >
+              {t("admin.next")}
+            </Link>
           </div>
         </footer>
       </section>
     </main>
   );
 }
-

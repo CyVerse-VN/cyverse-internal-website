@@ -25,11 +25,15 @@ export async function updateProfileAction(
 ): Promise<ActionState> {
   const displayName = String(formData.get("display_name") ?? "").trim();
   const team = String(formData.get("team") ?? "").trim();
+  const notebooklmEmail = String(formData.get("notebooklm_email") ?? "").trim().toLowerCase();
   if (!displayName || displayName.length > 100) {
     return { status: "error", message: "Display name must be between 1 and 100 characters." };
   }
   if (team.length > 100) {
     return { status: "error", message: "Team must be 100 characters or fewer." };
+  }
+  if (notebooklmEmail && (notebooklmEmail.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notebooklmEmail))) {
+    return { status: "error", message: "Enter a valid NotebookLM email address." };
   }
 
   const token = await authenticatedToken();
@@ -43,7 +47,7 @@ export async function updateProfileAction(
       "/auth/me",
       {
         method: "PATCH",
-        body: JSON.stringify({ display_name: displayName, team: team || null }),
+        body: JSON.stringify({ display_name: displayName, team: team || null, notebooklm_email: notebooklmEmail || null }),
       },
       token,
     );
@@ -59,6 +63,7 @@ export async function updateProfileAction(
     return { status: "error", message: "The account service returned an invalid response." };
   }
   revalidatePath("/(dashboard)", "layout");
+  revalidatePath("/settings/account");
   return { status: "success", message: "Profile details updated." };
 }
 

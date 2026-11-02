@@ -37,21 +37,15 @@ Bootstrap không ghi đè file môi trường đã có. Sau khi bootstrap, đi�
 
 ## Cấu hình đăng nhập nội bộ
 
-Backend cần PostgreSQL đang chạy và database đã tồn tại. Cập nhật `apps/backend/.env`:
+Backend dùng PostgreSQL-compatible TiDB Cloud. Tạo database `cyverse_internal` trong instance, lấy thông tin từ **Connect** trên TiDB Cloud rồi cập nhật `apps/backend/.env`:
 
 ```env
 APP_ENV=development
-DATABASE_URL=postgresql+psycopg://postgres:<POSTGRES_PASSWORD>@localhost:5432/cyverse
+DATABASE_URL=postgresql://INSTANCE.postgres:REPLACE_WITH_URL_ENCODED_PASSWORD@INSTANCE.gateway01.us-east-1.prod.aws.pg.tidbcloud.com:5432/cyverse_internal?sslmode=verify-full
 AUTH_JWT_SECRET=<AT_LEAST_32_RANDOM_CHARACTERS>
 ```
 
-Nếu dùng Supabase trên mạng chỉ có IPv4, giữ direct `DATABASE_URL` lấy từ nút **Connect** của project và thêm region của Session Pooler:
-
-```env
-SUPABASE_POOLER_REGION=ap-southeast-2
-```
-
-Backend sẽ tự chuyển direct endpoint sang Supabase Session Pooler port `5432`, thêm `sslmode=require`, đồng thời giữ nguyên database password.
+Thay các placeholder bằng thông tin thực; percent-encode ký tự đặc biệt trong mật khẩu. Backend và Alembic dùng chung `DATABASE_URL`, tự chọn driver `psycopg` và mặc định xác minh TLS cho endpoint TiDB Cloud. Xem [cấu hình database](docs/database.md) để biết cách cấu hình CA và khởi tạo schema.
 
 Không commit mật khẩu PostgreSQL hoặc file `.env`. Frontend gọi backend qua Server Actions; cập nhật `apps/web/.env.local`:
 

@@ -6,14 +6,16 @@ import logo from "../../../../docs/ui/cyverse_logo.png";
 interface BrandMarkProps {
   compact?: boolean;
   inverse?: boolean;
-  href?: string;
+  href?: string | null;
+  showTagline?: boolean;
   onClick?: () => void;
 }
 
 export function BrandMark({
   compact = false,
   inverse = false,
-  href = "/dashboard",
+  href = null,
+  showTagline = false,
   onClick,
 }: BrandMarkProps) {
   const content = (
@@ -23,7 +25,7 @@ export function BrandMark({
       </span>
       <span className="brand-mark__copy">
         <strong className={inverse ? "text-white" : ""}>CyVerse</strong>
-        {!compact && <small>Detect · Deceive · Defend</small>}
+        {!compact && showTagline && <small>Detect · Deceive · Defend</small>}
       </span>
     </>
   );

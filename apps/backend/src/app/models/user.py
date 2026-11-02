@@ -24,6 +24,7 @@ class User(TimestampMixin, Base):
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     team: Mapped[str | None] = mapped_column(String(100))
+    notebooklm_email: Mapped[str | None] = mapped_column(String(320))
     role: Mapped[str] = mapped_column(String(16), default=ROLE_MEMBER, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

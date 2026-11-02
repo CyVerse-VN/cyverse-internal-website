@@ -117,6 +117,7 @@ class AuthService:
             password_hash=hash_password(request.password),
             display_name=request.display_name.strip(),
             team=request.team.strip() if request.team else None,
+            notebooklm_email=request.notebooklm_email.lower() if request.notebooklm_email else None,
             role=request.role,
         )
         self.repository.add_user(user)
@@ -148,6 +149,8 @@ class AuthService:
             user.display_name = request.display_name.strip()
         if "team" in fields:
             user.team = request.team.strip() if request.team else None
+        if "notebooklm_email" in fields:
+            user.notebooklm_email = request.notebooklm_email.lower() if request.notebooklm_email else None
         if "role" in fields and request.role is not None:
             user.role = request.role
         if "is_active" in fields and request.is_active is not None:
@@ -170,6 +173,8 @@ class AuthService:
     async def update_profile(self, *, user: User, request: UpdateProfileRequest) -> User:
         user.display_name = request.display_name
         user.team = request.team
+        if "notebooklm_email" in request.model_fields_set:
+            user.notebooklm_email = request.notebooklm_email.lower() if request.notebooklm_email else None
         await self.repository.commit()
         return user
 

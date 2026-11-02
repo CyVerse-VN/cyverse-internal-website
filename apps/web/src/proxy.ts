@@ -73,5 +73,6 @@ export const config = {
     "/settings/:path*",
     "/tools/:path*",
     "/api/research/:path*",
+    "/api/threads/:path*",
   ],
 };

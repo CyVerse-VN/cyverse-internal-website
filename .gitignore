@@ -38,6 +38,9 @@ pip-wheel-metadata/
 !.env.example
 !.env.*.example
 
+# Backend tool login sessions and local data
+apps/backend/.local/
+
 # Editors and local tooling
 .idea/
 .vscode/

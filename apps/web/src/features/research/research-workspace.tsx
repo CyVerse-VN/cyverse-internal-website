@@ -27,6 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useLanguage } from "@/lib/i18n/context";
 
 import {
   EMPTY_PAPER_FILTERS,
@@ -133,6 +134,7 @@ function upsertSession(
 }
 
 export function ResearchWorkspace({ initialSessionId }: { initialSessionId: string | null }) {
+  const { t, language } = useLanguage();
   const [config, setConfig] = useState<ResearchConfig>(FALLBACK_RESEARCH_CONFIG);
   const [preferences, setPreferences] = useState<ResearchPreferences>(() =>
     defaultPreferences(FALLBACK_RESEARCH_CONFIG),
@@ -850,7 +852,7 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
                         onSelect={() => startRename(session)}
                       >
                         <Pencil aria-hidden="true" />
-                        Rename
+                        {t("research.renameSession")}
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
@@ -858,7 +860,7 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
                         onSelect={() => setSessionToDelete(session)}
                       >
                         <Trash2 aria-hidden="true" />
-                        Delete
+                        {t("research.deleteSession")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -872,7 +874,7 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
               className="research-load-more"
               onClick={() => void fetchHistory(nextCursor)}
             >
-              Load older sessions
+              {t("research.loadOlder")}
             </button>
           )}
         </div>
@@ -881,39 +883,47 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
       <section className="research-workspace">
         <header className="research-hero">
           <div>
-            <p className="research-breadcrumb">⌂ &nbsp;›&nbsp; AI Research Tool</p>
-            <h1><span aria-hidden="true">✦</span> AI Research Tool</h1>
-            <p>Find, analyze, and compare academic papers with an AI-assisted pipeline.</p>
+            <p className="research-breadcrumb">⌂ &nbsp;›&nbsp; {t("research.breadcrumb")}</p>
+            <h1><span aria-hidden="true">✦</span> {t("research.heading")}</h1>
+            <p>{t("research.subheading")}</p>
           </div>
-          <blockquote>“Research today, a smarter tomorrow.”<small>— CyVerse</small></blockquote>
+          <blockquote>{t("research.quote")}<small>— CyVerse</small></blockquote>
         </header>
 
         <form className="research-search-card" onSubmit={submitSearch}>
           <div className="research-search-card__topline">
-            <strong>⌕ &nbsp; Search papers</strong>
-            <span>Use a focused research question for better results.</span>
+            <strong>⌕ &nbsp; {t("research.searchCardTitle")}</strong>
+            <span>{t("research.searchCardDesc")}</span>
           </div>
           <textarea
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             maxLength={config.limits.query_max}
-            placeholder='e.g. "Recent advances in explainable deepfake detection"'
+            placeholder={t("research.searchPlaceholder")}
             aria-label="Research question"
           />
           <div className="research-search-controls">
             <label>
-              <span>Time range</span>
+              <span>{t("research.timeRange")}</span>
               <select
                 value={preferences.timeRange}
                 onChange={(event) => updatePreference("timeRange", event.target.value as ResearchPreferences["timeRange"])}
               >
-                {timeOptions.map((option) => (
-                  <option value={option.value} key={option.value}>{option.label}</option>
-                ))}
+                {timeOptions.map((option) => {
+                  let label = option.label;
+                  if (language === "vi") {
+                    if (option.value === "custom") label = t("research.customRange");
+                    else if (option.value === "all") label = t("research.allTime");
+                    else if (option.value.startsWith("from-")) label = `Từ ${option.value.replace("from-", "")} đến nay`;
+                  }
+                  return (
+                    <option value={option.value} key={option.value}>{label}</option>
+                  );
+                })}
               </select>
             </label>
             <fieldset className="research-source-picker">
-              <legend>Sources</legend>
+              <legend>{t("research.sourcesLegend")}</legend>
               <div>
                 {config.sources.map((source) => (
                   <label key={source}>
@@ -928,18 +938,18 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
               </div>
             </fieldset>
             <label>
-              <span>Max results</span>
+              <span>{t("research.maxResults")}</span>
               <select
                 value={preferences.resultLimit}
                 onChange={(event) => updatePreference("resultLimit", Number(event.target.value))}
               >
                 {resultLimitOptions.map((value) => (
-                  <option value={value} key={value}>{value} papers</option>
+                  <option value={value} key={value}>{value} {t("research.papersCount")}</option>
                 ))}
               </select>
             </label>
             <label>
-              <span>Visibility</span>
+              <span>{t("research.visibility")}</span>
               <select
                 value={selected ? selected.visibility : visibility}
                 onChange={(event) => {
@@ -950,23 +960,23 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
                   }
                 }}
               >
-                <option value="public">Public</option>
-                <option value="private">Private</option>
+                <option value="public">{t("research.public")}</option>
+                <option value="private">{t("research.private")}</option>
               </select>
             </label>
             <button className="primary-button research-submit" type="submit" disabled={submitting}>
-              {submitting ? "Creating…" : "➤ Search papers"}
+              {submitting ? t("research.searching") : `➤ ${t("research.searchButton")}`}
             </button>
           </div>
           {preferences.timeRange === "custom" && (
             <div className="research-custom-years-box">
               <div className="research-custom-years__header">
-                <h5>Custom Publication Window</h5>
-                <p>Specify the publication range for retrieved papers ({Math.max(config.limits.year_min, 2020)} to {config.limits.year_max}).</p>
+                <h5>{t("research.customYearsTitle")}</h5>
+                <p>{t("research.customYearsDesc")} ({Math.max(config.limits.year_min, 2020)} to {config.limits.year_max}).</p>
               </div>
               <div className="research-custom-years__grid">
                 <label>
-                  <span>Year from</span>
+                  <span>{t("research.yearFrom")}</span>
                   <input
                     type="number"
                     min={Math.max(config.limits.year_min, 2020)}
@@ -975,10 +985,10 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
                     placeholder={String(config.defaults.year_from)}
                     onChange={(event) => updatePreference("yearFrom", event.target.value)}
                   />
-                  <small>Minimum: {Math.max(config.limits.year_min, 2020)}</small>
+                  <small>{t("research.minYear")}: {Math.max(config.limits.year_min, 2020)}</small>
                 </label>
                 <label>
-                  <span>Year to</span>
+                  <span>{t("research.yearTo")}</span>
                   <input
                     type="number"
                     min={Math.max(config.limits.year_min, 2020)}
@@ -987,7 +997,7 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
                     placeholder={String(config.defaults.year_to)}
                     onChange={(event) => updatePreference("yearTo", event.target.value)}
                   />
-                  <small>Maximum: {config.limits.year_max}</small>
+                  <small>{t("research.maxYear")}: {config.limits.year_max}</small>
                 </label>
               </div>
             </div>
@@ -999,7 +1009,7 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
             onClick={() => setAdvancedOpen((current) => !current)}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
-            <span>{advancedOpen ? "Hide advanced settings" : "Advanced settings"}</span>
+            <span>{advancedOpen ? t("research.hideAdvancedSettings") : t("research.advancedSettings")}</span>
             <ChevronDown
               className={`h-3.5 w-3.5 transition-transform duration-200 ${advancedOpen ? "rotate-180" : ""}`}
             />
@@ -1008,9 +1018,9 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
             <div className="research-advanced-panel">
               <div className="research-advanced-header">
                 <div>
-                  <h4 className="research-advanced-title">Candidate Extraction Limits</h4>
+                  <h4 className="research-advanced-title">{t("research.candidateExtractionLimits")}</h4>
                   <p className="research-advanced-desc">
-                    Set the maximum raw candidate papers to retrieve from each source before AI ranking.
+                    {t("research.candidateExtractionDesc")}
                   </p>
                 </div>
                 <button
@@ -1020,7 +1030,7 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
                   title="Reset retrieval parameters to system defaults"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  <span>Reset defaults</span>
+                  <span>{t("research.resetDefaults")}</span>
                 </button>
               </div>
 
@@ -1053,12 +1063,12 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
         </form>
 
         {error && <div className="research-alert" role="alert">{error}</div>}
-        {loadingSession && <div className="research-empty"><div className="research-spinner" />Loading research session…</div>}
+        {loadingSession && <div className="research-empty"><div className="research-spinner" />{t("research.loadingSession")}</div>}
         {!loadingSession && !selected && (
           <div className="research-empty">
             <span aria-hidden="true">✦</span>
-            <h2>Start a research session</h2>
-            <p>Your search will be queued immediately and remain available after you close this page.</p>
+            <h2>{t("research.startSession")}</h2>
+            <p>{t("research.startSessionDesc")}</p>
           </div>
         )}
         {!loadingSession && selected && (
@@ -1136,7 +1146,7 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
-                  {ACTIVE_RESEARCH_STATUSES.has(selected.status) && <button type="button" className="secondary-button" onClick={() => void cancelSelected()}>Cancel</button>}
+                  {ACTIVE_RESEARCH_STATUSES.has(selected.status) && <button type="button" className="secondary-button" onClick={() => void cancelSelected()}>{t("research.cancelButton")}</button>}
                 </div>
               )}
             </section>
@@ -1162,15 +1172,15 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
 
             {selected.papers.length > 0 && (
               <section className="research-results">
-                <div className="research-results__heading"><div><h2>Search results</h2><span>{papers.length} of {selected.papers.length} papers</span></div><label>Sort by<select value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value as PaperFilters["sort"] }))}><option value="relevance">Relevance</option><option value="newest">Newest</option><option value="citations">Most cited</option><option value="title">Title</option></select></label></div>
+                <div className="research-results__heading"><div><h2>{t("research.searchResults")}</h2><span>{language === "vi" ? `${papers.length} trên ${selected.papers.length} ${t("research.papersShown")}` : `${papers.length} of ${selected.papers.length} ${t("research.papersShown")}`}</span></div><label>{t("research.sortBy")}<select value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value as PaperFilters["sort"] }))}><option value="relevance">{t("research.relevance")}</option><option value="newest">{t("research.newest")}</option><option value="citations">{t("research.citations")}</option><option value="title">{t("research.title")}</option></select></label></div>
                 <div className="research-results__layout">
                   <aside className="research-filters" aria-label="Paper filters">
-                    <div><strong>Filters</strong><button type="button" onClick={() => setFilters(EMPTY_PAPER_FILTERS)}>Clear</button></div>
-                    <label>Publication year<select value={filters.year} onChange={(event) => setFilters((current) => ({ ...current, year: event.target.value }))}><option value="">All years</option>{Array.from(yearCounts).sort((a, b) => b[0].localeCompare(a[0])).map(([value, count]) => <option key={value} value={value}>{value} ({count})</option>)}</select></label>
-                    <label>Source<select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}><option value="">All sources</option>{sourceOptions.map((value) => <option key={value} value={value}>{SOURCE_LABELS[value]} ({selected.papers.filter((paper) => paper.sources.includes(value)).length})</option>)}</select></label>
-                    <label>Paper type<select value={filters.paperType} onChange={(event) => setFilters((current) => ({ ...current, paperType: event.target.value }))}><option value="">All types</option>{Array.from(typeCounts).map(([value, count]) => <option key={value} value={value}>{value} ({count})</option>)}</select></label>
-                    <label>Topic<select value={filters.field} onChange={(event) => setFilters((current) => ({ ...current, field: event.target.value }))}><option value="">All topics</option>{fieldOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-                    <label>Read priority<select value={filters.priority} onChange={(event) => setFilters((current) => ({ ...current, priority: event.target.value }))}><option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+                    <div><strong>{t("research.filters")}</strong><button type="button" onClick={() => setFilters(EMPTY_PAPER_FILTERS)}>{t("research.clear")}</button></div>
+                    <label>{t("research.pubYear")}<select value={filters.year} onChange={(event) => setFilters((current) => ({ ...current, year: event.target.value }))}><option value="">{t("research.allYears")}</option>{Array.from(yearCounts).sort((a, b) => b[0].localeCompare(a[0])).map(([value, count]) => <option key={value} value={value}>{value} ({count})</option>)}</select></label>
+                    <label>{t("research.source")}<select value={filters.source} onChange={(event) => setFilters((current) => ({ ...current, source: event.target.value }))}><option value="">{t("research.allSources")}</option>{sourceOptions.map((value) => <option key={value} value={value}>{SOURCE_LABELS[value]} ({selected.papers.filter((paper) => paper.sources.includes(value)).length})</option>)}</select></label>
+                    <label>{t("research.paperType")}<select value={filters.paperType} onChange={(event) => setFilters((current) => ({ ...current, paperType: event.target.value }))}><option value="">{t("research.allTypes")}</option>{Array.from(typeCounts).map(([value, count]) => <option key={value} value={value}>{value} ({count})</option>)}</select></label>
+                    <label>{t("research.topic")}<select value={filters.field} onChange={(event) => setFilters((current) => ({ ...current, field: event.target.value }))}><option value="">{t("research.allTopics")}</option>{fieldOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+                    <label>{t("research.priority")}<select value={filters.priority} onChange={(event) => setFilters((current) => ({ ...current, priority: event.target.value }))}><option value="">{t("research.allPriorities")}</option><option value="high">{t("research.high")}</option><option value="medium">{t("research.medium")}</option><option value="low">{t("research.low")}</option></select></label>
                     <label className="research-inline-check">
                       <input
                         type="checkbox"
@@ -1179,21 +1189,21 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
                           setFilters((current) => ({ ...current, openAccess: event.target.checked }))
                         }
                       />
-                      <span>Open access only</span>
+                      <span>{t("research.openAccessOnly")}</span>
                     </label>
                   </aside>
                   <div className="research-paper-list">
-                    {papers.length === 0 && <div className="research-empty"><h3>No papers match these filters</h3><button type="button" className="secondary-button" onClick={() => setFilters(EMPTY_PAPER_FILTERS)}>Clear filters</button></div>}
+                    {papers.length === 0 && <div className="research-empty"><h3>{t("research.noPapersMatch")}</h3><button type="button" className="secondary-button" onClick={() => setFilters(EMPTY_PAPER_FILTERS)}>{t("research.clearFilters")}</button></div>}
                     {papers.map((paper) => {
                       const openUrl = paper.pdf_url ?? paper.landing_url;
                       return <article className="research-paper-card" key={paper.id}>
                         <span className="research-paper-rank">{paper.rank}</span>
                         <div className="research-paper-card__body">
-                          <div className="research-paper-card__title"><div><h3>{paper.title}</h3><p>{paper.authors.slice(0, 4).join(", ")}{paper.authors.length > 4 ? ", et al." : ""} · {paper.venue ?? "Unknown venue"} · {formatPaperDate(paper.published_at, paper.year)}</p></div>{openUrl ? <a className="research-open-button" href={openUrl} target="_blank" rel="noopener noreferrer" aria-label={`${paper.pdf_url ? "Open PDF" : "Open source page"} for ${paper.title}`}>Open ↗</a> : <button className="research-open-button" disabled>Unavailable</button>}</div>
-                          <div className="research-paper-tags">{paper.sources.map((source) => <span key={source}>{SOURCE_LABELS[source]}</span>)}<span>{paper.paper_type}</span>{paper.is_open_access && <span>Open access</span>}<span>{paper.citation_count ?? 0} citations</span></div>
+                          <div className="research-paper-card__title"><div><h3>{paper.title}</h3><p>{paper.authors.slice(0, 4).join(", ")}{paper.authors.length > 4 ? ", et al." : ""} · {paper.venue ?? "Unknown venue"} · {formatPaperDate(paper.published_at, paper.year)}</p></div>{openUrl ? <a className="research-open-button" href={openUrl} target="_blank" rel="noopener noreferrer" aria-label={`${paper.pdf_url ? "Open PDF" : "Open source page"} for ${paper.title}`}>{t("research.open")}</a> : <button className="research-open-button" disabled>{t("research.unavailable")}</button>}</div>
+                          <div className="research-paper-tags">{paper.sources.map((source) => <span key={source}>{SOURCE_LABELS[source]}</span>)}<span>{paper.paper_type}</span>{paper.is_open_access && <span>{t("research.openAccessBadge")}</span>}<span>{paper.citation_count ?? 0} {t("research.citationsCount")}</span></div>
                           <div className="research-paper-analysis">
-                            <section><strong>✦ AI summary</strong><p lang="vi">{paper.summary_vi}</p><small>Analysis based on the abstract.</small></section>
-                            <section><strong>Why read this?</strong><ul lang="vi">{paper.why_read_vi.slice(0, 3).map((reason) => <li key={reason}>{reason}</li>)}</ul></section>
+                            <section><strong>✦ {t("research.aiSummary")}</strong><p lang="vi">{paper.summary_vi}</p><small>{t("research.abstractBasis")}</small></section>
+                            <section><strong>{t("research.whyReadThis")}</strong><ul lang="vi">{paper.why_read_vi.slice(0, 3).map((reason) => <li key={reason}>{reason}</li>)}</ul></section>
                           </div>
                         </div>
                       </article>;
@@ -1219,11 +1229,13 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
                 <Trash2 className="h-5 w-5" />
               </div>
               <DialogTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                Delete research session
+                {t("research.deleteTitle")}
               </DialogTitle>
             </div>
             <DialogDescription className="text-sm text-slate-600 dark:text-slate-300 leading-normal pt-1">
-              Are you sure you want to delete <strong className="font-semibold text-slate-900 dark:text-slate-100">“{sessionToDelete?.title}”</strong>? This action cannot be undone and will permanently remove this session and its retrieved papers from your history.
+              {language === "vi"
+                ? `Bạn có chắc chắn muốn xóa “${sessionToDelete?.title}”? Thao tác này không thể hoàn tác và sẽ xóa vĩnh viễn phiên này cùng các bài báo đã truy xuất khỏi lịch sử.`
+                : `Are you sure you want to delete “${sessionToDelete?.title}”? This action cannot be undone and will permanently remove this session and its retrieved papers from your history.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0 mt-2">
@@ -1232,14 +1244,14 @@ export function ResearchWorkspace({ initialSessionId }: { initialSessionId: stri
               className="secondary-button"
               onClick={() => setSessionToDelete(null)}
             >
-              Cancel
+              {t("research.cancelButton")}
             </button>
             <button
               type="button"
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-sm font-semibold px-4 py-2 transition-colors"
               onClick={() => void confirmDeleteSession()}
             >
-              Delete session
+              {t("research.deleteButton")}
             </button>
           </DialogFooter>
         </DialogContent>

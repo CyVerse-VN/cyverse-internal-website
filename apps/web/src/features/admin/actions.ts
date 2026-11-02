@@ -27,6 +27,14 @@ function passwordError(password: string): ActionState | null {
   return null;
 }
 
+function preferredEmail(formData: FormData): string | null | ActionState {
+  const email = String(formData.get("notebooklm_email") ?? "").trim().toLowerCase();
+  if (email && (email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    return { status: "error", message: "Enter a valid NotebookLM email address." };
+  }
+  return email || null;
+}
+
 export async function createUserAction(
   _previousState: ActionState,
   formData: FormData,
@@ -36,6 +44,8 @@ export async function createUserAction(
   const displayName = String(formData.get("display_name") ?? "").trim();
   const team = String(formData.get("team") ?? "").trim();
   const role = formData.get("role") === "admin" ? "admin" : "member";
+  const notebooklmEmail = preferredEmail(formData);
+  if (typeof notebooklmEmail === "object" && notebooklmEmail !== null) return notebooklmEmail;
 
   if (!isValidUsername(username)) {
     return { status: "error", message: "Username must be 3–64 characters with no spaces, using only letters, numbers, dots, underscores, or hyphens." };
@@ -60,6 +70,7 @@ export async function createUserAction(
           password,
           display_name: displayName,
           team: team || null,
+          notebooklm_email: notebooklmEmail,
           role,
         }),
       },
@@ -83,6 +94,8 @@ export async function updateUserAction(
   const displayName = String(formData.get("display_name") ?? "").trim();
   const team = String(formData.get("team") ?? "").trim();
   const role = formData.get("role") === "admin" ? "admin" : "member";
+  const notebooklmEmail = preferredEmail(formData);
+  if (typeof notebooklmEmail === "object" && notebooklmEmail !== null) return notebooklmEmail;
   if (!userId || !displayName) {
     return { status: "error", message: "Display name is required." };
   }
@@ -94,7 +107,7 @@ export async function updateUserAction(
       `/admin/users/${encodeURIComponent(userId)}`,
       {
         method: "PATCH",
-        body: JSON.stringify({ display_name: displayName, team: team || null, role }),
+        body: JSON.stringify({ display_name: displayName, team: team || null, notebooklm_email: notebooklmEmail, role }),
       },
       token,
     );

@@ -15,7 +15,7 @@
 | Pydantic | 2.x | Dùng native với FastAPI hiện tại. |
 | SQLAlchemy | 2.0.x | ORM và database toolkit của backend. |
 | Alembic | 1.19.x | Quản lý database migrations. |
-| PostgreSQL | Supabase managed | Không pin phiên bản PostgreSQL server trong repository. |
+| PostgreSQL | TiDB Cloud PostgreSQL-compatible | Database `cyverse_internal`; dùng PostgreSQL wire protocol qua TLS, không pin phiên bản server. |
 | Python package manager | uv | Dùng để tạo môi trường, resolve và lock dependency. |
 | Python DB driver | psycopg 3.x | Kết hợp với SQLAlchemy. |
 | Testing backend | pytest | Unit test và integration test. |

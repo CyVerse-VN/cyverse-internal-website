@@ -18,4 +18,4 @@ CyVerse cần tài khoản nội bộ được quản trị viên cấp, không 
 
 ## Consequences
 
-Ứng dụng tự chịu trách nhiệm vận hành authentication schema, session revocation và migration. Đăng nhập sai không làm khóa tạm tài khoản. Supabase có thể vẫn cung cấp PostgreSQL managed nhưng Supabase Auth không được dùng cho luồng này.
+Ứng dụng tự chịu trách nhiệm vận hành authentication schema, session revocation và migration. Đăng nhập sai không làm khóa tạm tài khoản. Database được cung cấp bởi TiDB Cloud PostgreSQL-compatible; authentication do ứng dụng quản lý.

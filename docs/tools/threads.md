@@ -1,0 +1,244 @@
+# Threads Scraper Tool
+
+Backend tích hợp luồng trong `test/meta-threads-scraper`: mở rộng từ khóa bằng Groq,
+tìm bài Threads, khử trùng lặp, lọc sơ bộ, lấy bình luận phân cấp và thẩm định nội dung.
+Code runtime nằm hoàn toàn trong `apps/backend/src/app/tools/threads`, không import hay
+chạy script từ thư mục `test`. Giao diện tại `/tools/threads`, truy cập từ sidebar sau khi đăng nhập.
+
+## Giao diện và cấu hình collection
+
+Giao diện cung cấp thanh chuyển đổi tab kiểu ChatGPT (Segmented Pill Toggle) giữa hai chế độ làm việc riêng biệt:
+1. **Threads Scraper**: Cào và tổng hợp bài viết theo câu hỏi hoặc chủ đề tự do.
+2. **Travel & Places (Du lịch & Địa điểm)**: Tối ưu cho việc khám phá các quán ăn, quán cafe, điểm check-in và du lịch.
+   - Hỗ trợ chọn nhanh thành phố/địa phương và loại hình (Quán ăn ít người biết, Cafe view chill, Điểm check-in độc lạ, Ăn đêm & dạo phố, Ngắm hoàng hôn, Dã ngoại,...).
+   - **Phân tích từ khóa AI (Analyze keywords)**: AI đọc topic/prompt của người dùng và tạo sẵn bộ từ khóa liên quan được phân chia theo các nhóm trực quan. Người dùng có thể chọn lọc, bỏ bớt hoặc thêm bớt các từ khóa trước khi bắt đầu cào dữ liệu.
+   - Loại tìm kiếm hỗ trợ: Phổ biến (`top`), Mới nhất (`recent`), hoặc Cả hai (`both` - crawler cào tuần tự cả top và recent cho từng từ khóa).
+   - Hiển thị kết quả linh hoạt: Tab **Bản tin bài viết** (Cards địa điểm hiển thị địa chỉ, ghi chú đặc trưng trích xuất bởi AI) và Tab **Curation View** (Phân tích chuyên sâu).
+   - Lịch sử session của tab Threads Scraper và Travel & Places được phân tách riêng biệt (`request.mode == "travel"` vs `"scraper"`).
+
+Khi bật expand ở tab Scraper, AI tạo tối đa 1–5 từ khóa theo lựa chọn. API vẫn hỗ trợ `keywords` riêng; giao diện gửi danh sách rỗng và dùng ô nhập chung. Phần comments có bật/tắt, giới hạn mỗi bài hoặc chế độ lấy tất cả theo giới hạn vận hành của crawler. AI pre-filter có mức none/medium/high; `curate` là tùy chọn riêng của API, mặc định tắt.
+
+Mục "Cài đặt nâng cao" (Advanced settings) cho phép tùy chỉnh thời gian chạy tối đa (`run_timeout_seconds`, đặt `-1` để chạy đến khi xong hoặc từ 60s–86400s), thời gian tìm kiếm mỗi từ khóa (`search_timeout_seconds`, 15s–600s), độ trễ (`min_delay_seconds`, `max_delay_seconds`), số bài lấy bình luận (`max_comment_posts`, tối đa 500 bài), số phản hồi tối thiểu (`min_replies`), số tài khoản xoay vòng (`max_accounts`) và proxy (`use_proxy`). Các giá trị được kiểm tra ở frontend và backend; preference hợp lệ được nhớ trong browser.
+
+### Hàng đợi Session (FIFO Queue)
+Khi một session đang chạy (`running`), người dùng có thể tạo thêm nhiều session khác. Các session mới sẽ tự động lưu vào hệ thống dưới trạng thái `queued` (chờ xử lý) và xếp thứ tự trong hàng đợi (`#1`, `#2`,...). Worker xử lý tuần tự từng session theo nguyên tắc FIFO (First-In, First-Out), đảm bảo an toàn tài nguyên và không bị xung đột trình duyệt.
+
+Crawler chờ có search response hợp lệ trước khi kết luận không có bài; trang còn loading không được ghi thành collection rỗng thành công. Nếu hết giới hạn chờ mà chưa có payload search, job trả `THREADS_SEARCH_UNAVAILABLE`. Trang bình luận lạnh cũng có khoảng chờ ban đầu trước khi dừng vì không có dữ liệu mới.
+
+Search cuộn vùng có thể cuộn thực tế tại giữa feed, theo dõi vị trí/chiều cao trang và `searchResults.page_info.has_next_page`; metadata network mới ưu tiên hơn SSR ban đầu. Không dừng chỉ vì vài lượt chưa có bài mới khi vẫn đang đi qua danh sách đã tải hoặc layout còn thay đổi. Mỗi từ khóa có budget `THREADS_SEARCH_TIMEOUT_SECONDS` (mặc định 120s) và giới hạn an toàn 200 lượt. Khi chưa đủ bài do hết kết quả, phân trang ngừng tải hoặc hết budget, result giữ bài đã lấy kèm warning nêu số lượng/lý do; không âm thầm báo đủ chỉ tiêu. `max_posts_per_keyword` là tối đa bài duy nhất cho mỗi từ khóa, không bảo đảm Threads có đủ bài. Khử trùng giữa các từ khóa vẫn chạy ngay cả khi tắt AI pre-filter.
+
+Session mới mặc định public, mọi user đã đăng nhập có thể xem metadata, dữ liệu và tải file. Private chỉ owner/admin truy cập. Chỉ owner/admin đổi visibility, hủy và xóa session. Session cũ giữ private sau migration; không tự công khai dữ liệu đã có.
+
+Sau khi tạo collection, URL `/tools/threads/{id}` giữ liên kết tới job, cho phép reload hoặc quay lại từ lịch sử. Trang hiển thị stage/progress, hủy job, lọc posts theo nội dung, chỉ xem curated posts và xuất JSON/TXT. Lịch sử nằm bên trái; lịch sử và cấu hình thu gọn độc lập, nhớ trạng thái trong browser. Khi tạo/chọn session, cấu hình tự thu gọn. Web chỉ hiển thị bài viết; comments đọc qua link Threads hoặc file export. Visibility chỉ chỉnh trong session; form không có lựa chọn visibility hoặc dùng lại cấu hình. Frontend gọi Next.js same-origin API `/api/threads/*`; token được giữ trong HttpOnly cookie và chỉ Next.js server chuyển Bearer token sang backend.
+
+## Cấu hình dùng chung
+
+Mọi biến môi trường nằm trong `apps/backend/.env`; xem template
+`apps/backend/.env.example`. `GROQ_API_KEY` dùng chung với các tính năng backend hiện có.
+Không cần `.env`, `config.py` hoặc `accounts.json` riêng cho scraper.
+
+Cloudinary dùng ba biến backend-only: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`,
+`CLOUDINARY_API_SECRET`. Điền trong `apps/backend/.env` hoặc secret environment khi deploy,
+không gửi secret qua chat hoặc đưa vào frontend. Khi thiếu cấu hình, scraper vẫn lưu JSONB
+và cho tải TXT; hàng đợi archive giữ lỗi an toàn và retry sau khi worker được restart với
+cấu hình mới. Các biến đã có placeholder trong `.env.example`.
+
+```dotenv
+THREADS_ENABLED=true
+THREADS_EMBEDDED_WORKER=true
+THREADS_ANONYMOUS=false
+THREADS_ACCOUNTS='[{"id":"acc_01","username":"replace-me","password":"replace-me","enabled":true}]'
+THREADS_SESSIONS_DIR=.local/threads/sessions
+THREADS_GROQ_MODEL=qwen/qwen3.8-27b
+```
+
+`THREADS_ACCOUNTS` là JSON array, tối đa 10 tài khoản. Các trường:
+
+| Trường | Ý nghĩa |
+| --- | --- |
+| `id` | ID nội bộ chỉ gồm ASCII letters, digits, `_`, `-`; dùng làm tên session file. |
+| `username`, `password` | Chỉ dùng bởi lệnh login; có thể bỏ khi đã có session. |
+| `totp_secret` | Tùy chọn; tạo mã TOTP khi login yêu cầu 2FA. |
+| `proxy` | Tùy chọn: `http://user:password@host:port`, `https://host:port` hoặc `socks5://host:port`; bỏ trường này để kết nối trực tiếp. |
+| `enabled` | Bật/tắt tài khoản trong pool; mặc định `true`. |
+
+Session được lưu dưới `THREADS_SESSIONS_DIR/<id>.json`. Đường dẫn tương đối được resolve
+từ `apps/backend`, không phụ thuộc thư mục chạy lệnh. Thư mục mặc định `.local/` đã được
+Git ignore. Mỗi tài khoản bật có một browser context riêng; các lần tìm kiếm và lấy bình
+luận luân phiên qua pool. Thiếu session của tài khoản bật sẽ trả `THREADS_REAUTH_REQUIRED`.
+Chỉ chạy không cần session khi chủ động đặt `THREADS_ANONYMOUS=true` và không bật tài khoản nào;
+Threads có thể yêu cầu đăng nhập khi tìm kiếm.
+
+## Cài Chromium và đăng nhập
+
+Chạy từ repository root:
+
+```powershell
+uv sync --project apps/backend --extra dev
+pnpm.cmd threads:install
+pnpm.cmd threads:login acc_01
+```
+
+Lệnh login tự nhập username/password từ `.env`; nếu có `totp_secret`, lệnh sẽ nhập mã
+TOTP. Browser mặc định có cửa sổ để người vận hành xử lý xác thực bổ sung. Có thể dùng
+`--headless` khi không cần tương tác, hoặc `--manual` để tự đăng nhập hoàn toàn:
+
+```powershell
+pnpm.cmd threads:login acc_01 --manual
+pnpm.cmd threads:login acc_01 --headless --timeout 120
+```
+
+Lệnh chỉ thay session file sau khi thấy cookie phiên và truy cập được Threads home.
+Session cũ được giữ nếu login thất bại. Có thể sao chép session Playwright đã có vào đúng
+thư mục/tên file. Worker chỉ đọc session; không tự gửi password để login lại khi hết phiên.
+Sau khi đăng nhập một tài khoản đang tắt, đặt `enabled=true` trong `THREADS_ACCOUNTS` rồi restart worker.
+
+## Worker và Windows
+
+Mặc định consumer chạy trong FastAPI lifespan khi `THREADS_ENABLED=true` và
+`THREADS_EMBEDDED_WORKER=true`. Có thể tách worker bằng cách đặt
+`THREADS_EMBEDDED_WORKER=false` và chạy:
+
+```powershell
+pnpm.cmd threads:worker
+```
+
+Trên Windows, worker giữ database I/O trên Selector event loop và chạy Playwright trên
+Proactor event loop trong thread riêng. Progress/cancellation được chuyển về database
+loop; timeout hoặc shutdown đóng browser trước khi thread kết thúc. Vì vậy có thể dùng
+consumer embedded cùng `pnpm.cmd dev:backend`, hoặc tách worker theo lệnh trên. Không
+chạy psycopg async trên Proactor loop. Cấu hình local dùng `THREADS_EMBEDDED_WORKER=true`.
+Lệnh `pnpm.cmd start:backend` chạy API/embedded worker không reload với loop factory
+`app.core.runtime:create_event_loop`, tránh Uvicorn mặc định chọn Proactor trên Windows.
+
+Worker dùng PostgreSQL advisory lock riêng, xử lý FIFO từng job để hạn chế số browser
+đồng thời. API và worker phải cùng database, cấu hình và session files. Sau restart, job
+đang chạy chuyển `failed/WORKER_INTERRUPTED`; dữ liệu đã checkpoint vẫn còn, job đang chờ
+vẫn được xử lý. Đóng tab, trình duyệt hoặc frontend không hủy job; backend/worker phải tiếp
+tục chạy. Không tự chạy lại job đã cào một phần để tránh thêm request và chi phí AI.
+Consumer cũng xử lý upload/xóa Cloudinary với exponential backoff 30 giây đến 1 giờ.
+
+## API
+
+Các endpoint dùng Bearer access token hiện có. Public đọc được bởi user đã đăng nhập;
+private chỉ owner/admin đọc. Thao tác quản lý luôn giới hạn owner/admin. Không đủ quyền
+trả `404`, kể cả export và thao tác trên public session.
+
+| Method | Path | Chức năng |
+| --- | --- | --- |
+| `GET` | `/api/v1/tools/threads/config` | Defaults, limits, enabled, accounts_ready và ai_available; không trả credentials hoặc account IDs. |
+| `POST` | `/api/v1/tools/threads/runs` | Tạo job và trả `202`; hỗ trợ `Idempotency-Key`. |
+| `GET` | `/api/v1/tools/threads/runs?limit=20&offset=0` | Danh sách job được phép xem. |
+| `GET` | `/api/v1/tools/threads/runs/{id}` | Request, trạng thái, stage, progress, lỗi và kết quả. |
+| `POST` | `/api/v1/tools/threads/runs/{id}/cancel` | Hủy queued job hoặc yêu cầu dừng running job. |
+| `PATCH` | `/api/v1/tools/threads/runs/{id}` | Đổi `visibility` thành public/private. |
+| `DELETE` | `/api/v1/tools/threads/runs/{id}` | Trả `202`, yêu cầu dừng và xóa vĩnh viễn cloud/database. |
+| `GET` | `/api/v1/tools/threads/runs/{id}/export?format=json` | Tải JSON đã lưu, kể cả kết quả từng phần. |
+| `GET` | `/api/v1/tools/threads/runs/{id}/export?format=txt` | Toàn bộ session theo `threads-text-v2`, có ID và quan hệ cha–con. |
+
+Request ví dụ:
+
+```json
+{
+  "query": "Find quiet cafes for reading in Saigon",
+  "visibility": "public",
+  "max_posts_per_keyword": 15,
+  "search_type": "recent",
+  "include_comments": true,
+  "max_comment_posts": 10,
+  "max_comments_per_post": 25,
+  "min_replies": 2,
+  "expand_query": true,
+  "pre_filter": true,
+  "curate": true
+}
+```
+
+`keywords` tùy chọn, tối đa 5 cụm, mỗi cụm 1–100 ký tự. Khi truyền `keywords`, backend bỏ
+bước mở rộng từ khóa. API cho tối đa 100 bài/từ khóa, 50 bài lấy bình luận và 500 bình
+luận/bài khi đặt giới hạn dương. `max_comment_posts <= 0` chọn mọi bài đủ điều kiện;
+`max_comments_per_post <= 0` lấy theo chế độ không giới hạn số đếm nhưng vẫn dừng sau
+35 vòng hoặc 3 vòng không có dữ liệu mới. Không bảo đảm lấy đủ mọi bình luận trên Threads.
+Muốn chạy hoàn toàn không có AI, truyền `expand_query=false`, `pre_filter=false`,
+`curate=false`; đồng thời truyền `keywords` hoặc dùng query tối đa 100 ký tự.
+
+Stage: `queued`, `planning`, `searching`, `filtering`, `comments`, `curating`, `saving`, rồi
+`completed`, `failed` hoặc `cancelled`. Progress từ 0 đến 1. Kết quả gồm `posts`,
+`curated_post_ids`, `total_comments`, `keywords`, `duration_seconds`, `warnings`. Bài được
+giữ kèm `search_keywords`, media URLs, counters, bình luận và `ai_analysis` nếu bật.
+Response còn có owner (ID/display name), visibility, thời gian tạo/bắt đầu/kết thúc,
+post/comment counts, `can_manage`, `archive_status`, lỗi storage an toàn và
+`deletion_requested`. List chỉ tải metadata/counts, `result=null`.
+
+Groq được gọi bằng HTTP async; JSON response được kiểm tra bằng Pydantic. Lỗi AI làm job
+thất bại rõ ràng; không âm thầm trả kết quả chưa thẩm định. Dùng cùng idempotency key và
+request sẽ trả lại job cũ; đổi input hoặc dùng key của tool khác trả `409`.
+
+## Lưu trữ, bảo mật và vận hành
+
+Request/lifecycle lưu trong `tool_runs`. Migration `20261101_0006` thêm `threads_results`
+(summary một collection), `threads_posts` (snapshot từng bài) và `threads_comments`
+(snapshot bình luận, giữ parent ID). Migration `20261101_0007` thêm metadata chia sẻ,
+counts và trạng thái archive/cleanup bền vững. Bản ghi session được tạo ngay khi queue.
+Không bật pre-filter thì checkpoint sau mỗi từ khóa; bật pre-filter thì chỉ checkpoint
+các bài đã được AI chọn sau từng batch. Bài và ID được commit trước khi lấy comments.
+Cứ mỗi khi chạy xong một từ khóa, hệ thống tự động lưu (commit) snapshot dữ liệu các bài viết thu được vào PostgreSQL. Cơ chế này đảm bảo dữ liệu không bị mất sạch nếu gặp lỗi kết nối hoặc gián đoạn giữa chừng. Tính năng xuất file (JSON và TXT) chỉ mở khóa cho người dùng khi phiên cào đã dừng hoặc hoàn tất (`completed`, `failed`), giúp tối ưu tài nguyên lưu trữ và đảm bảo file xuất ra có đầy đủ tổng hợp toàn bộ bài viết đã cào.
+
+### Cơ chế Hủy và Xóa Session (Dừng ngay & Xóa sạch dữ liệu)
+
+1. **Hủy session (`cancel`)**:
+   - Khi người dùng bấm hủy, cờ `cancel_requested` được bật ngay lập tức. Monitor task ngắt crawler, đóng trình duyệt Playwright và giải phóng tài nguyên.
+   - Toàn bộ bài viết (`ThreadsPostRecord`) và bình luận (`ThreadsCommentRecord`) đã thu thập dở dang sẽ bị xóa sạch khỏi database (`snapshot.posts.clear()`).
+   - Các chỉ số được đưa về 0 (`post_count = 0`, `comment_count = 0`, `snapshot_ready = False`), không upload file txt lên Cloudinary.
+   - Các bài viết của phiên bị hủy bị loại bỏ khỏi `get_existing_post_ids` để không ảnh hưởng đến bộ lọc trùng lặp cho các phiên cào kế tiếp.
+   - API `/export` từ chối xuất file đối với session đã hủy (`SESSION_CANCELLED`).
+   - Giao diện hiển thị thông báo rõ ràng rằng phiên đã được hủy và toàn bộ dữ liệu đã được dừng và xóa sạch.
+
+2. **Xóa session (`delete`)**:
+   - Khi người dùng bấm xóa, hệ thống lập tức yêu cầu dừng nếu session đang chạy hoặc trong hàng đợi.
+   - Xóa sạch dữ liệu bài viết/bình luận trong database.
+   - Worker dọn dẹp artifact (`ThreadsArtifacts.run_once`) kiểm tra và xóa vĩnh viễn file text archive trên Cloudinary (nếu đã từng tải lên).
+   - Tiến hành xóa vĩnh viễn bản ghi `ToolRun` cùng toàn bộ bản ghi liên quan qua cơ chế cascade delete trong cơ sở dữ liệu.
+
+Migration `20261102_0008` đổi metadata từ `markdown_*` sang `archive_*`, thêm `legacy_archive_public_id`, và đưa session cũ về pending. Worker ghi TXT thành công trước khi xóa Markdown cũ; lỗi giữ cả hai reference để retry hoặc xóa session an toàn. API không còn export `md`.
+
+TXT được archive khi job hoàn tất hợp lệ. Mỗi session dùng đúng một raw asset `cyverse/threads/{run_id}.txt`, `type=authenticated`, `overwrite=true`, `backup=false`. Thay visibility sẽ cập nhật cùng asset. Public/private của ứng dụng luôn kiểm tra tại API; không trả delivery URL hoặc chữ ký Cloudinary cho browser. Download TXT dựng từ snapshot PostgreSQL để tải được cả dữ liệu từng phần hoặc khi cloud đang lỗi. Nội dung không tin cậy nằm trong các dòng literal có tiền tố `|`. JSON/TXT download không ghi file `latest` dùng chung.
+
+Adapter dùng HTTP async đã có trong dự án, theo [Cloudinary Upload API](https://cloudinary.com/documentation/image_upload_api_reference),
+[quy tắc chữ ký](https://cloudinary.com/documentation/authentication_signatures) và
+[authenticated assets](https://cloudinary.com/documentation/control_access_to_media).
+
+Không tải media về disk, không tự lấy public proxy, không đưa credentials, proxy hoặc
+session vào request/result API.
+
+Session files là credentials: chỉ cấp quyền đọc cho tiến trình backend/worker và giữ
+trên persistent storage khi deploy. Trên Linux, cài Chromium cùng system dependencies
+trong build image (`uv run python -m playwright install --with-deps chromium`). Không
+trỏ worker development vào database production. `THREADS_RUN_TIMEOUT_SECONDS` mặc định
+1800 giây; delay giữa các lượt cào nằm trong `THREADS_MIN_DELAY_SECONDS` và
+`THREADS_MAX_DELAY_SECONDS`.
+
+Parser được port từ mẫu scraper và giữ MIT notice trong module. Playwright đã có qua
+NotebookLM và được khai báo direct dependency vì tool import trực tiếp; PyOTP phục vụ
+TOTP, tránh tự triển khai thuật toán xác thực. Đã đối chiếu metadata/license từ
+[Playwright](https://pypi.org/project/playwright/) và [PyOTP](https://pypi.org/project/PyOTP/),
+và kiểm tra advisory theo phiên bản qua OSV khi tích hợp. Model có thể đổi bằng
+`THREADS_GROQ_MODEL`; danh mục chính thức tại [Groq models](https://console.groq.com/docs/models).
+
+
+## Nội dung HTML và định dạng TXT
+
+Bài viết lấy caption từ JSON, ngày đăng ở trường `published_at` riêng. Fallback đọc bình
+luận từ DOM từng ghép mọi `span[dir="auto"]`, có thể dính timestamp hoặc nút Translate.
+Extractor mới duyệt text nodes, bỏ controls/time và container con, rồi lọc fragment UI riêng;
+không xóa ngày hoặc chữ Translate trong caption có cấu trúc. Snapshot DOM cũ có cả tiền tố
+ngày và hậu tố Translate được làm sạch khi đọc/export, không ghi đè raw snapshot.
+Web không render bình luận hoặc phần AI analysis trong post cards.
+
+TXT `threads-text-v2` có session/request metadata, collection summary, post ID/URL/timestamp,
+metrics, media URLs, literal post text và toàn bộ AI analysis. Mỗi comment có ID, parent ID,
+source depth, tree depth, source type, like count và reply-to username. Renderer nhóm comment
+con dưới cha, giữ nguyên parent ngoài collection, đánh dấu quan hệ không xác định hoặc chu kỳ,
+và không tự đoán cha cho DOM fallback. Từng dòng nội dung có tiền tố `|`, không bị nhầm với
+metadata/dấu kết thúc khi nội dung chứa tên section hoặc instruction. JSONB vẫn là dữ liệu
+có cấu trúc chính; TXT dùng để đọc và gửi AI, không bảo đảm đã thu thập toàn bộ comments nguồn.

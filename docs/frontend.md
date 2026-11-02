@@ -2,6 +2,19 @@
 
 Frontend dùng Next.js App Router (Next.js 16, React 19) kết hợp Tailwind CSS v4.
 
+## Threads workspace
+
+`/tools/threads` và `/tools/threads/{runId}` dùng module `src/features/threads` cho settings,
+Zod schemas, API client, form và result components. Next.js handlers trong `/api/threads`
+chuyển request/download bằng token server-side; Proxy refresh token áp dụng cho namespace này.
+Trang có cấu hình từng collection, session mới mặc định public, danh sách session được
+phép xem, metadata/counts, polling/cancel, kết quả bài viết từng phần và JSON/TXT export.
+`ThreadsSessionControls` chỉ hiện mutation cho owner/admin. Delete hiển thị tiến trình
+cleanup, tiếp tục polling đến khi server trả `404` rồi bỏ session khỏi danh sách. Archive
+cloud chưa sẵn sàng không chặn tải TXT từ dữ liệu đã lưu.
+CSS module giữ bố cục responsive trong dashboard hiện có. Kiểm thử unit và Playwright dùng
+fake backend local; không gọi Threads/Groq hay database thật.
+
 ## Cấu trúc thư mục
 
 - **Routes**: Nằm trong `src/app`.
@@ -36,3 +49,9 @@ Frontend dùng Next.js App Router (Next.js 16, React 19) kết hợp Tailwind CS
 
 
 
+
+
+Threads workspace dùng history rail bên trái kiểu danh sách hội thoại. History/settings có
+nút thu gọn độc lập, `aria-expanded`/`aria-controls` và lưu preference vào localStorage.
+Visibility chỉ nằm trong session controls. Post cards không render comments/AI analysis;
+JSON/TXT downloads giữ dữ liệu đầy đủ. Giao diện không còn dùng lại cấu hình hoặc export MD.

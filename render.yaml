@@ -13,7 +13,7 @@ services:
     autoDeploy: true
 
     envVars:
-      # 1. Cấu hình hệ thống cố định (Render tự động nạp ngầm)
+      # Fixed application settings.
       - key: APP_ENV
         value: production
       - key: APP_NAME
@@ -30,24 +30,18 @@ services:
         value: "15"
       - key: AUTH_REFRESH_TOKEN_DAYS
         value: "30"
-      - key: SUPABASE_POOLER_REGION
-        value: ap-northeast-1
       - key: CORS_ORIGIN_REGEX
         value: "^https://.*\\.vercel\\.app$"
 
-      # 2. Các biến tùy chọn có giá trị mặc định (không bắt buộc nhập)
+      # Optional settings with defaults.
       - key: CORS_ORIGINS
         value: ""
-      - key: SUPABASE_URL
-        value: ""
-      - key: SUPABASE_KEY
-        value: ""
 
-      # 3. Database URL (Bắt buộc)
+      # Required server-side TiDB Cloud PostgreSQL connection URL.
       - key: DATABASE_URL
         sync: false
 
-      # 4. Toàn bộ các API Key AI & Nghiên cứu (Dán từ file .env của bạn)
+      # Server-side AI and research API keys.
       - key: GROQ_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY
@@ -57,4 +51,12 @@ services:
       - key: RESEARCH_SEMANTIC_SCHOLAR_API_KEY
         sync: false
       - key: RESEARCH_OPENALEX_API_KEY
+        sync: false
+
+      # Backend-only Threads TXT storage credentials.
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
         sync: false

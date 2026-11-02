@@ -44,3 +44,41 @@ async def test_lifespan_can_disable_embedded_research_consumer(
 
     async with main_module.lifespan(FastAPI()):
         pass
+
+
+@pytest.mark.asyncio
+async def test_lifespan_starts_and_stops_threads_worker_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started, stopped = asyncio.Event(), asyncio.Event()
+
+    class FakeThreadsWorker:
+        async def run_supervised(self) -> None:
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+
+    monkeypatch.setattr(main_module.threads_config, "enabled", True)
+    monkeypatch.setattr(main_module.threads_config, "embedded_worker", True)
+    monkeypatch.setattr(main_module, "ThreadsWorker", FakeThreadsWorker)
+    async with main_module.lifespan(FastAPI()):
+        await asyncio.wait_for(started.wait(), timeout=1)
+    assert stopped.is_set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled,embedded", [(False, True), (True, False)])
+async def test_lifespan_leaves_threads_consumer_disabled_or_external(
+    monkeypatch: pytest.MonkeyPatch, enabled: bool, embedded: bool,
+) -> None:
+    class UnexpectedThreadsWorker:
+        def __init__(self) -> None:
+            raise AssertionError("The embedded Threads consumer should remain disabled")
+
+    monkeypatch.setattr(main_module.threads_config, "enabled", enabled)
+    monkeypatch.setattr(main_module.threads_config, "embedded_worker", embedded)
+    monkeypatch.setattr(main_module, "ThreadsWorker", UnexpectedThreadsWorker)
+    async with main_module.lifespan(FastAPI()):
+        pass

@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessagesSquare,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -20,18 +21,21 @@ import {
 import { BrandMark } from "@/components/brand-mark";
 import { AccountMenu } from "@/components/account-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
+import { useLanguage } from "@/lib/i18n/context";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { logoutAction } from "@/features/auth/actions";
 import type { AuthUser } from "@/lib/auth/types";
 
 
 const memberNav = [
-  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-  { href: "/tools/research", label: "AI Research Tool", icon: Sparkles },
-  { href: "", label: "Datasets", icon: Database },
-  { href: "", label: "Experiments", icon: FlaskConical },
-  { href: "", label: "Monitoring", icon: Activity },
-  { href: "", label: "Documents", icon: FileText },
+  { href: "/dashboard", label: "Home", key: "nav.home", icon: LayoutDashboard },
+  { href: "/tools/research", label: "AI Research Tool", key: "nav.research", icon: Sparkles },
+  { href: "/tools/threads", label: "Threads Scraper", key: "nav.threads", icon: MessagesSquare },
+  { href: "", label: "Datasets", key: "nav.datasets", icon: Database },
+  { href: "", label: "Experiments", key: "nav.experiments", icon: FlaskConical },
+  { href: "", label: "Monitoring", key: "nav.monitoring", icon: Activity },
+  { href: "", label: "Documents", key: "nav.documents", icon: FileText },
 ];
 
 function NavigationPendingIndicator() {
@@ -48,6 +52,8 @@ export function DashboardShell({ user, children }: { user: AuthUser; children: R
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { t } = useLanguage();
+
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       setSidebarCollapsed(window.localStorage.getItem("cyverse.sidebar.collapsed") === "true");
@@ -99,8 +105,8 @@ export function DashboardShell({ user, children }: { user: AuthUser; children: R
             className="sidebar-collapse-button"
             type="button"
             onClick={toggleSidebar}
-            aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
-            title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+            aria-label={sidebarCollapsed ? t("nav.expand") : t("nav.collapse")}
+            title={sidebarCollapsed ? t("nav.expand") : t("nav.collapse")}
           >
             {sidebarCollapsed ? (
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -112,6 +118,7 @@ export function DashboardShell({ user, children }: { user: AuthUser; children: R
         <nav aria-label="Primary navigation">
           {memberNav.map((item) => {
             const Icon = item.icon;
+            const label = t(item.key);
             return item.href ? (
               <Link
                 key={item.label}
@@ -120,14 +127,14 @@ export function DashboardShell({ user, children }: { user: AuthUser; children: R
                 onClick={() => setMenuOpen(false)}
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="nav-link__label">{item.label}</span>
+                <span className="nav-link__label">{label}</span>
                 <NavigationPendingIndicator />
               </Link>
             ) : (
               <span className="nav-link nav-link--disabled" key={item.label} title="Coming soon">
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="nav-link__label">{item.label}</span>
-                <small>Soon</small>
+                <span className="nav-link__label">{label}</span>
+                <small>{t("nav.soon")}</small>
               </span>
             );
           })}
@@ -138,7 +145,7 @@ export function DashboardShell({ user, children }: { user: AuthUser; children: R
               onClick={() => setMenuOpen(false)}
             >
               <Users className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span className="nav-link__label">User Management</span>
+              <span className="nav-link__label">{t("nav.users")}</span>
               <NavigationPendingIndicator />
             </Link>
           )}
@@ -158,7 +165,7 @@ export function DashboardShell({ user, children }: { user: AuthUser; children: R
           <form action={logoutAction}>
             <button className="nav-link logout-button" type="submit">
               <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span className="nav-link__label">Sign out</span>
+              <span className="nav-link__label">{t("account.signOut")}</span>
             </button>
           </form>
         </div>
@@ -171,13 +178,16 @@ export function DashboardShell({ user, children }: { user: AuthUser; children: R
               <small>CyVerse internal workspace</small>
               <strong>
                 {pathname.startsWith("/settings")
-                  ? "Account"
+                  ? t("topbar.account")
                   : pathname.startsWith("/tools/research")
-                    ? "AI Research Tool"
-                    : "Administration"}
+                    ? t("nav.research")
+                    : pathname.startsWith("/tools/threads")
+                      ? t("nav.threads")
+                    : t("topbar.admin")}
               </strong>
             </div>
             <div className="flex items-center gap-2 ml-auto">
+              <LanguageToggle />
               <ThemeToggle />
               <AccountMenu user={user} />
             </div>
