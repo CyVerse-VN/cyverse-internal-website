@@ -47,29 +47,118 @@ cấu hình mới. Các biến đã có placeholder trong `.env.example`.
 THREADS_ENABLED=true
 THREADS_EMBEDDED_WORKER=true
 THREADS_ANONYMOUS=false
-THREADS_ACCOUNTS='[{"id":"acc_01","username":"replace-me","password":"replace-me","enabled":true}]'
+THREADS_ACCOUNTS='[{"id":"acc_01","username":"user1","password":"***","enabled":true},{"id":"acc_02","username":"user2","password":"***","enabled":true},{"id":"acc_03","username":"user3","password":"***","enabled":true}]'
 THREADS_SESSIONS_DIR=.local/threads/sessions
 THREADS_GROQ_MODEL=qwen/qwen3.8-27b
 ```
 
-`THREADS_ACCOUNTS` là JSON array, tối đa 10 tài khoản. Các trường:
+`THREADS_ACCOUNTS` là JSON array, cấu hình danh sách tài khoản (ví dụ 3 tài khoản `acc_01`, `acc_02`, `acc_03`). Các trường:
 
 | Trường | Ý nghĩa |
 | --- | --- |
-| `id` | ID nội bộ chỉ gồm ASCII letters, digits, `_`, `-`; dùng làm tên session file. |
-| `username`, `password` | Chỉ dùng bởi lệnh login; có thể bỏ khi đã có session. |
-| `totp_secret` | Tùy chọn; tạo mã TOTP khi login yêu cầu 2FA. |
-| `proxy` | Tùy chọn: `http://user:password@host:port`, `https://host:port` hoặc `socks5://host:port`; bỏ trường này để kết nối trực tiếp. |
+| `id` | ID nội bộ chỉ gồm chữ cái, số, `_`, `-` (ví dụ `acc_01`, `acc_02`, `acc_03`). |
+| `username`, `password` | Dùng bởi lệnh login tự động ở local; có thể bỏ trống khi đã có session. |
+| `totp_secret` | Tùy chọn; sinh mã TOTP khi tài khoản bật 2FA. |
+| `proxy` | Tùy chọn: `http://user:pass@host:port` hoặc `socks5://host:port`; bỏ trống để kết nối trực tiếp. |
 | `enabled` | Bật/tắt tài khoản trong pool; mặc định `true`. |
 
-Session được lưu dưới `THREADS_SESSIONS_DIR/<id>.json`. Đường dẫn tương đối được resolve
-từ `apps/backend`, không phụ thuộc thư mục chạy lệnh. Thư mục mặc định `.local/` đã được
-Git ignore. Mỗi tài khoản bật có một browser context riêng; các lần tìm kiếm và lấy bình
-luận luân phiên qua pool. Thiếu session của tài khoản bật sẽ trả `THREADS_REAUTH_REQUIRED`.
-Chỉ chạy không cần session khi chủ động đặt `THREADS_ANONYMOUS=true` và không bật tài khoản nào;
-Threads có thể yêu cầu đăng nhập khi tìm kiếm.
+---
 
-## Cài Chromium và đăng nhập
+## Quản lý Session tập trung (threads_sessions.json)
+
+Để thuận tiện quản lý nhiều tài khoản (ví dụ 3 tài khoản `acc_01`, `acc_02`, `acc_03`) mà không phải tải từng file riêng lẻ, hệ thống hỗ trợ gom chung toàn bộ session vào **1 tệp JSON duy nhất** tên là:
+
+```text
+threads_sessions.json
+```
+
+### 1. Cấu trúc tệp `threads_sessions.json`
+Tệp có thể ở dạng đối tượng chuẩn chứa trường `sessions` hoặc map trực tiếp theo `account_id`:
+
+```json
+{
+  "version": 1,
+  "updated_at": "2026-11-03T00:00:00Z",
+  "sessions": {
+    "acc_01": {
+      "cookies": [
+        {
+          "name": "sessionid",
+          "value": "...",
+          "domain": ".threads.com",
+          "path": "/",
+          "expires": 1824977570.57,
+          "httpOnly": true,
+          "secure": true
+        }
+      ],
+      "origins": []
+    },
+    "acc_02": {
+      "cookies": [...],
+      "origins": []
+    },
+    "acc_03": {
+      "cookies": [...],
+      "origins": []
+    }
+  }
+}
+```
+
+> **Lưu ý:** Hệ thống cũng tương thích ngược hoàn toàn với việc import từng tệp riêng lẻ (ví dụ `acc_01.json`), hoặc tệp JSON mảng `[{"id": "acc_01", "cookies": [...]}, ...]`.
+
+---
+
+### 2. Cơ chế hoạt động giữa Local và Web (Render / Cloud)
+
+* **Ở Local:**
+  * Mặc định, backend đọc trực tiếp tệp tổng hợp `threads_sessions.json` hoặc các tệp `acc_01.json`, `acc_02.json`, `acc_03.json` đặt trong thư mục `apps/backend/.local/threads/sessions/`.
+  * Nếu bạn chạy lệnh tạo session tự động ở local (`pnpm.cmd threads:login acc_01`), file sẽ được tạo hoặc cập nhật tại đây.
+* **Khi triển khai lên Web (Render):**
+  * Do ổ cứng container trên Render là tạm thời (ephemeral disk) và sẽ bị xóa khi restart hoặc redeploy, toàn bộ session được lưu bền vững vào bảng cơ sở dữ liệu PostgreSQL `threads_account_sessions`.
+  * **Cách kích hoạt trên Web:** Admin chỉ cần truy cập trang **Cài đặt** (`/settings/account`) -> mục **Threads Sessions (Admin)** và tải lên 1 tệp duy nhất `threads_sessions.json`.
+  * Backend sẽ tự động phân tách, kiểm tra tính hợp lệ của từng tài khoản, lưu vào PostgreSQL và ghi đồng thời ra đĩa container cho Playwright crawler.
+  * Mỗi khi container Render khởi động lại hoặc scale instance mới, hàm `restore_sessions_from_db()` sẽ tự động đồng bộ session từ PostgreSQL ra đĩa container.
+
+---
+
+### 3. Phân quyền Admin & Dùng chung phiên
+
+* **Chỉ Admin mới có quyền Import:**
+  * Endpoint API `POST /api/v1/tools/threads/sessions/batch` và `POST /api/v1/tools/threads/accounts/{id}/session` được bảo vệ bằng middleware `require_admin`. Người dùng thông thường (role `member`) sẽ nhận mã lỗi `403 Forbidden`.
+  * Nút tải lên / xuất tệp session chỉ xuất hiện trong trang Cài đặt của Admin.
+* **Mọi thành viên dùng chung:**
+  * Toàn bộ thành viên trong nhóm đều dùng chung các session đang kích hoạt mà Admin đã import khi chạy tác vụ cào dữ liệu (hệ thống tự động xoay vòng qua các tài khoản hợp lệ).
+
+---
+
+### 4. Kiểm tra và cảnh báo hết hạn Session
+
+* **Tự động nhận diện hết hạn:**
+  * Backend tự động phân tích trường `expires` trong cookie `sessionid` của Threads/Instagram.
+  * API `/api/v1/tools/threads/accounts` trả về cờ `is_expired` và thời điểm hết hạn `expires_at` (ISO format).
+* **Hiển thị trực quan cho người dùng:**
+  * **Trang Cài đặt (Admin):** Hiển thị nhãn **Active** (kèm ngày hết hạn), **Expired** (Hết hạn), hoặc **No Session** (Chưa có session). Cung cấp nút **Export JSON** để tải tệp `threads_sessions.json` về và nút **Import JSON (Bundle)** để cập nhật.
+  * **Trang Scraper / Travel Form:** Khi có bất kỳ tài khoản nào bị hết hạn session, hệ thống hiển thị thanh cảnh báo đỏ:
+    > *⚠️ Tài khoản (acc_01) có phiên đăng nhập đã hết hạn. Vui lòng liên hệ Admin để cập nhật lại session JSON trong Cài đặt.*
+  * Nếu tất cả tài khoản đều chưa có session hoặc hết hạn, nút bắt đầu cào sẽ được khóa lại kèm thông báo hướng dẫn liên hệ Admin.
+
+---
+
+### 5. Cơ chế Chạy linh hoạt & Tự động bỏ qua (Skip) tài khoản lỗi
+
+* **Không bắt buộc tất cả tài khoản phải có session:**
+  * Hệ thống chỉ yêu cầu tối thiểu **1 tài khoản** có session hoạt động (`active_count >= 1`).
+  * Ví dụ: Nếu cấu hình 3 tài khoản nhưng chỉ có `acc_01` và `acc_02` có session (hoặc `acc_03` chưa đăng nhập), hệ thống sẽ tự động dùng 2 tài khoản sẵn có và bỏ qua tài khoản chưa sẵn sàng. Nút cào dữ liệu vẫn mở và hoạt động bình thường.
+* **Tự động chuyển tài khoản khi gặp sự cố lúc cào:**
+  * Trong quá trình cào bài hoặc lấy bình luận, nếu một tài khoản bất ngờ bị Threads điều hướng về trang đăng nhập hoặc yêu cầu challenge/checkpoint:
+  * Crawler sẽ tự động loại bỏ tài khoản lỗi ra khỏi danh sách xoay vòng, ghi nhận thông báo cảnh báo (warning) và tiếp tục thực hiện cào dữ liệu với các tài khoản khỏe mạnh còn lại.
+  * Tác vụ cào chỉ bị dừng nếu **tất cả** các tài khoản đều bị mất phiên và không còn tài khoản nào dùng được.
+
+---
+
+## Cài Chromium và đăng nhập tài khoản local
 
 Chạy từ repository root:
 
@@ -88,10 +177,10 @@ pnpm.cmd threads:login acc_01 --manual
 pnpm.cmd threads:login acc_01 --headless --timeout 120
 ```
 
-Lệnh chỉ thay session file sau khi thấy cookie phiên và truy cập được Threads home.
-Session cũ được giữ nếu login thất bại. Có thể sao chép session Playwright đã có vào đúng
-thư mục/tên file. Worker chỉ đọc session; không tự gửi password để login lại khi hết phiên.
-Sau khi đăng nhập một tài khoản đang tắt, đặt `enabled=true` trong `THREADS_ACCOUNTS` rồi restart worker.
+Sau khi có đủ session cho 3 tài khoản ở local, bạn có thể:
+1. Vào trang Cài đặt trên Web (`/settings/account`) dưới quyền Admin.
+2. Bấm **Export JSON** hoặc gom 3 session vào tệp `threads_sessions.json`.
+3. Bấm **Import JSON (Bundle)** để kích hoạt tất cả trên Web.
 
 ## Worker và Windows
 

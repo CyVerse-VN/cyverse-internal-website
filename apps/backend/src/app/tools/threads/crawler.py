@@ -13,7 +13,7 @@ from playwright.async_api import BrowserContext, Page, Response, Route, async_pl
 from playwright.async_api import Error as PlaywrightError
 from pydantic import BaseModel, Field, ValidationError
 
-from app.tools.threads.config import ThreadsConfig
+from app.tools.threads.config import ThreadsAccount, ThreadsConfig
 from app.tools.threads.content import dom_comment_text
 from app.tools.threads.errors import ThreadsError
 from app.tools.threads.parser import (
@@ -24,6 +24,7 @@ from app.tools.threads.parser import (
     search_has_next_page,
 )
 from app.tools.threads.schemas import ThreadsComment, ThreadsPost
+from app.tools.threads.session import inspect_session_file
 
 ALLOWED_DOMAINS = ("threads.com", "threads.net", "instagram.com", "cdninstagram.com", "fbcdn.net")
 MAX_PAYLOAD_BYTES = 5_000_000
@@ -119,6 +120,8 @@ class PlaywrightThreadsCrawler:
         self.search_timeout_seconds = search_timeout_seconds
 
     def _page(self) -> Page:
+        if not self.pages:
+            raise ThreadsError("THREADS_REAUTH_REQUIRED", "No active Threads account sessions remaining.", 503)
         page = self.pages[self.index % len(self.pages)]
         self.index += 1
         return page
@@ -202,90 +205,110 @@ class PlaywrightThreadsCrawler:
         *,
         on_warning: SearchWarning | None = None,
     ) -> list[ThreadsPost]:
-        page = self._page()
-        url = f"https://www.threads.com/search/?q={quote(keyword, safe='')}"
-        if search_type == "recent":
-            url += "&filter=latest"
-        posts: dict[str, ThreadsPost] = {}
-        stalled = 0
-        search_ready = False
-        previous_state: ScrollState | None = None
-        deadline = time.monotonic() + self.search_timeout_seconds
-        stop_reason = "the search scroll limit was reached"
-        async with self._sources(page, url) as captured:
-            for _ in range(200):
-                before = len(posts)
-                scripts = await self._scripts(page)
-                sources = captured + scripts
-                search_ready = search_ready or has_search_results(sources)
-                try:
-                    batch = extract_search_posts(sources, keyword)
-                    state = ScrollState.model_validate(await page.evaluate(READ_SCROLL_STATE))
-                except (ValidationError, TypeError, ValueError, AttributeError, OverflowError) as exc:
+        while self.pages:
+            page = self._page()
+            url = f"https://www.threads.com/search/?q={quote(keyword, safe='')}"
+            if search_type == "recent":
+                url += "&filter=latest"
+            posts: dict[str, ThreadsPost] = {}
+            stalled = 0
+            search_ready = False
+            previous_state: ScrollState | None = None
+            deadline = time.monotonic() + self.search_timeout_seconds
+            stop_reason = "the search scroll limit was reached"
+            try:
+                async with self._sources(page, url) as captured:
+                    for _ in range(200):
+                        before = len(posts)
+                        scripts = await self._scripts(page)
+                        sources = captured + scripts
+                        search_ready = search_ready or has_search_results(sources)
+                        try:
+                            batch = extract_search_posts(sources, keyword)
+                            state = ScrollState.model_validate(await page.evaluate(READ_SCROLL_STATE))
+                        except (ValidationError, TypeError, ValueError, AttributeError, OverflowError) as exc:
+                            logger.error(
+                                "Threads returned invalid post data or scroll state for keyword %r: %s (%s)",
+                                keyword,
+                                type(exc).__name__,
+                                exc,
+                            )
+                            raise ThreadsError(
+                                "THREADS_INVALID_DATA", "Threads returned invalid post data.", 502
+                            ) from exc
+                        for post in batch:
+                            posts.setdefault(post.post_id, post)
+                        has_next = search_has_next_page(captured)
+                        if has_next is None:
+                            has_next = search_has_next_page(scripts)
+                        if len(posts) >= limit:
+                            break
+                        if search_ready and state.at_bottom and has_next is False:
+                            stop_reason = "Threads reported no further results"
+                            break
+                        unchanged = (
+                            previous_state is not None
+                            and abs(state.height - previous_state.height) < 1
+                            and abs(state.top - previous_state.top) < 1
+                        )
+                        stalled = (
+                            stalled + 1 if state.at_bottom and unchanged and len(posts) == before else 0
+                        )
+                        if search_ready and stalled >= (8 if has_next is True else 4):
+                            stop_reason = (
+                                "pagination stopped loading although Threads advertised more results"
+                                if has_next
+                                else "the end of the feed stopped loading new results"
+                            )
+                            break
+                        if time.monotonic() >= deadline:
+                            stop_reason = "the per-keyword search time limit was reached"
+                            break
+                        previous_state = state
+                        await page.evaluate(SCROLL_SEARCH)
+                        await page.wait_for_timeout(1500)
+                if not search_ready and not posts:
                     logger.error(
-                        "Threads returned invalid post data or scroll state for keyword %r: %s (%s)",
+                        "Threads search failed to load any results for keyword %r (stop_reason: %s)",
                         keyword,
-                        type(exc).__name__,
-                        exc,
+                        stop_reason,
                     )
                     raise ThreadsError(
-                        "THREADS_INVALID_DATA", "Threads returned invalid post data.", 502
-                    ) from exc
-                for post in batch:
-                    posts.setdefault(post.post_id, post)
-                has_next = search_has_next_page(captured)
-                if has_next is None:
-                    has_next = search_has_next_page(scripts)
-                if len(posts) >= limit:
-                    break
-                if search_ready and state.at_bottom and has_next is False:
-                    stop_reason = "Threads reported no further results"
-                    break
-                unchanged = (
-                    previous_state is not None
-                    and abs(state.height - previous_state.height) < 1
-                    and abs(state.top - previous_state.top) < 1
-                )
-                stalled = (
-                    stalled + 1 if state.at_bottom and unchanged and len(posts) == before else 0
-                )
-                if search_ready and stalled >= (8 if has_next is True else 4):
-                    stop_reason = (
-                        "pagination stopped loading although Threads advertised more results"
-                        if has_next
-                        else "the end of the feed stopped loading new results"
+                        "THREADS_SEARCH_UNAVAILABLE",
+                        "Threads did not finish loading search results. Retry or refresh the account session.",
+                        502,
                     )
-                    break
-                if time.monotonic() >= deadline:
-                    stop_reason = "the per-keyword search time limit was reached"
-                    break
-                previous_state = state
-                await page.evaluate(SCROLL_SEARCH)
-                await page.wait_for_timeout(1500)
-        if not search_ready and not posts:
-            logger.error(
-                "Threads search failed to load any results for keyword %r (stop_reason: %s)",
-                keyword,
-                stop_reason,
-            )
-            raise ThreadsError(
-                "THREADS_SEARCH_UNAVAILABLE",
-                "Threads did not finish loading search results. Retry or refresh the account session.",
-                502,
-            )
-        selected = list(posts.values())[:limit]
-        logger.info(
-            "Threads search for %r collected %d unique posts (requested: %d, stop_reason: %s)",
-            keyword,
-            len(selected),
-            limit,
-            stop_reason,
+                selected = list(posts.values())[:limit]
+                logger.info(
+                    "Threads search for %r collected %d unique posts (requested: %d, stop_reason: %s)",
+                    keyword,
+                    len(selected),
+                    limit,
+                    stop_reason,
+                )
+                if len(selected) < limit and on_warning is not None:
+                    on_warning(
+                        f"Collected {len(selected)} of {limit} requested unique posts: {stop_reason}."
+                    )
+                return selected
+            except ThreadsError as exc:
+                if exc.code == "THREADS_REAUTH_REQUIRED" and len(self.pages) > 1:
+                    logger.warning(
+                        "Threads session redirected to login/challenge on %s; skipping this account (%d remaining)",
+                        page.url,
+                        len(self.pages) - 1,
+                    )
+                    if page in self.pages:
+                        self.pages.remove(page)
+                    if on_warning is not None:
+                        on_warning(
+                            f"An account encountered a login/challenge prompt and was skipped ({len(self.pages)} account(s) remaining)."
+                        )
+                    continue
+                raise
+        raise ThreadsError(
+            "THREADS_REAUTH_REQUIRED", "No active Threads account sessions remaining.", 503
         )
-        if len(selected) < limit and on_warning is not None:
-            on_warning(
-                f"Collected {len(selected)} of {limit} requested unique posts: {stop_reason}."
-            )
-        return selected
 
     async def comments(self, url: str, limit: int) -> list[ThreadsComment]:
         if not re.fullmatch(
@@ -293,76 +316,90 @@ class PlaywrightThreadsCrawler:
         ):
             logger.error("Invalid Threads post URL for comments extraction: %s", url)
             raise ThreadsError("INVALID_POST_URL", "Threads returned an invalid post URL.", 502)
-        page = self._page()
-        comments: dict[str, ThreadsComment] = {}
-        idle = 0
-        fetch_all = limit <= 0
-        max_rounds = 35 if fetch_all else max(6, limit // 4 + 3)
-        async with self._sources(page, url) as captured:
-            for round_index in range(max_rounds):
-                before = len(comments)
-                for comment in extract_comments(captured + await self._scripts(page)):
-                    comments.setdefault(comment.id, comment)
-                # SSR pages can omit reply payloads; preserve their text with unknown parents.
-                dom = await page.locator('div[data-pressable-container="true"]').evaluate_all(
-                    """nodes => nodes.slice(1, 150).map(node => {
-                        const text = [];
-                        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-                        while (walker.nextNode()) {
-                            const parent = walker.currentNode.parentElement;
-                            if (!parent?.closest('span[dir="auto"]')) continue;
-                            if (parent.closest('[data-pressable-container="true"]') !== node) continue;
-                            const control = parent.closest('time, button, [role="button"]');
-                            if (control && control !== node && node.contains(control)) continue;
-                            const value = walker.currentNode.textContent?.trim();
-                            if (value) text.push(value);
+        while self.pages:
+            page = self._page()
+            comments: dict[str, ThreadsComment] = {}
+            idle = 0
+            fetch_all = limit <= 0
+            max_rounds = 35 if fetch_all else max(6, limit // 4 + 3)
+            try:
+                async with self._sources(page, url) as captured:
+                    for round_index in range(max_rounds):
+                        before = len(comments)
+                        for comment in extract_comments(captured + await self._scripts(page)):
+                            comments.setdefault(comment.id, comment)
+                        # SSR pages can omit reply payloads; preserve their text with unknown parents.
+                        dom = await page.locator('div[data-pressable-container="true"]').evaluate_all(
+                            """nodes => nodes.slice(1, 150).map(node => {
+                                const text = [];
+                                const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+                                while (walker.nextNode()) {
+                                    const parent = walker.currentNode.parentElement;
+                                    if (!parent?.closest('span[dir="auto"]')) continue;
+                                    if (parent.closest('[data-pressable-container="true"]') !== node) continue;
+                                    const control = parent.closest('time, button, [role="button"]');
+                                    if (control && control !== node && node.contains(control)) continue;
+                                    const value = walker.currentNode.textContent?.trim();
+                                    if (value) text.push(value);
+                                }
+                                return {
+                                    username: node.querySelector('a[href^="/@"]')?.getAttribute('href')
+                                        ?.split('/@')[1]?.split(/[/?]/)[0],
+                                    text
+                                };
+                            })"""
+                        )
+                        seen = {
+                            (comment.username, " ".join(comment.text.split()))
+                            for comment in comments.values()
                         }
-                        return {
-                            username: node.querySelector('a[href^="/@"]')?.getAttribute('href')
-                                ?.split('/@')[1]?.split(/[/?]/)[0],
-                            text
-                        };
-                    })"""
-                )
-                seen = {
-                    (comment.username, " ".join(comment.text.split()))
-                    for comment in comments.values()
-                }
-                for item in dom:
-                    username = item.get("username")
-                    texts = item.get("text")
-                    if not isinstance(username, str) or not isinstance(texts, list):
-                        continue
-                    text = dom_comment_text(
-                        username, [value for value in texts if isinstance(value, str)]
+                        for item in dom:
+                            username = item.get("username")
+                            texts = item.get("text")
+                            if not isinstance(username, str) or not isinstance(texts, list):
+                                continue
+                            text = dom_comment_text(
+                                username, [value for value in texts if isinstance(value, str)]
+                            )
+                            fingerprint = (username, " ".join(text.split()))
+                            if len(text) < 3 or fingerprint in seen:
+                                continue
+                            identifier = (
+                                "dom_" + hashlib.sha256(f"{username}:{text}".encode()).hexdigest()[:20]
+                            )
+                            comments.setdefault(
+                                identifier, ThreadsComment(id=identifier, username=username, text=text)
+                            )
+                            seen.add(fingerprint)
+                        idle = idle + 1 if len(comments) == before else 0
+                        # Give cold post pages time to deliver replies before declaring them empty.
+                        idle_complete = idle >= 3 and (bool(comments) or round_index >= 5)
+                        if (not fetch_all and len(comments) >= limit) or idle_complete:
+                            break
+                        buttons = page.get_by_role(
+                            "button", name=re.compile(r"View (more )?replies", re.IGNORECASE)
+                        )
+                        for index in range(min(await buttons.count(), 3)):
+                            button = buttons.nth(index)
+                            if await button.is_visible():
+                                await button.click(timeout=2000)
+                        await page.evaluate("window.scrollBy(0, 1100)")
+                        await page.wait_for_timeout(1500)
+                results = list(comments.values()) if fetch_all else list(comments.values())[:limit]
+                logger.debug("Extracted %d comments from %s", len(results), url)
+                return results
+            except ThreadsError as exc:
+                if exc.code == "THREADS_REAUTH_REQUIRED" and len(self.pages) > 1:
+                    logger.warning(
+                        "Threads session redirected to login/challenge during comments on %s; skipping this account (%d remaining)",
+                        page.url,
+                        len(self.pages) - 1,
                     )
-                    fingerprint = (username, " ".join(text.split()))
-                    if len(text) < 3 or fingerprint in seen:
-                        continue
-                    identifier = (
-                        "dom_" + hashlib.sha256(f"{username}:{text}".encode()).hexdigest()[:20]
-                    )
-                    comments.setdefault(
-                        identifier, ThreadsComment(id=identifier, username=username, text=text)
-                    )
-                    seen.add(fingerprint)
-                idle = idle + 1 if len(comments) == before else 0
-                # Give cold post pages time to deliver replies before declaring them empty.
-                idle_complete = idle >= 3 and (bool(comments) or round_index >= 5)
-                if (not fetch_all and len(comments) >= limit) or idle_complete:
-                    break
-                buttons = page.get_by_role(
-                    "button", name=re.compile(r"View (more )?replies", re.IGNORECASE)
-                )
-                for index in range(min(await buttons.count(), 3)):
-                    button = buttons.nth(index)
-                    if await button.is_visible():
-                        await button.click(timeout=2000)
-                await page.evaluate("window.scrollBy(0, 1100)")
-                await page.wait_for_timeout(1500)
-        results = list(comments.values()) if fetch_all else list(comments.values())[:limit]
-        logger.debug("Extracted %d comments from %s", len(results), url)
-        return results
+                    if page in self.pages:
+                        self.pages.remove(page)
+                    continue
+                raise
+        return list(comments.values()) if fetch_all else list(comments.values())[:limit]
 
 
 @asynccontextmanager
@@ -373,31 +410,49 @@ async def open_crawler(
     search_timeout_seconds: int | None = None,
 ) -> AsyncIterator[ThreadsCrawler]:
     accounts = [account for account in config.accounts if account.enabled]
-    if max_accounts > 0:
-        accounts = accounts[:max_accounts]
     if not accounts and not config.anonymous:
         logger.error("No enabled Threads accounts and anonymous mode is disabled")
         raise ThreadsError(
             "THREADS_NOT_CONFIGURED", "Configure Threads accounts or enable anonymous mode.", 503
         )
+
+    valid_accounts: list[ThreadsAccount] = []
     for account in accounts:
-        if not config.session_path(account).is_file():
-            logger.error(
+        session_file = config.session_path(account)
+        has_session, is_expired, _ = inspect_session_file(session_file)
+        if has_session and not is_expired:
+            valid_accounts.append(account)
+        elif has_session and is_expired:
+            logger.warning(
+                "Session file for account %s is expired at %s",
+                account.id,
+                session_file,
+            )
+        else:
+            logger.warning(
                 "Session file for account %s missing at %s",
-                account.username,
-                config.session_path(account),
+                account.id,
+                session_file,
             )
-            raise ThreadsError(
-                "THREADS_REAUTH_REQUIRED",
-                "Create login sessions for enabled Threads accounts.",
-                503,
-            )
+
+    if not valid_accounts and not config.anonymous:
+        logger.error("No active Threads account sessions available and anonymous mode is disabled")
+        raise ThreadsError(
+            "THREADS_REAUTH_REQUIRED",
+            "Create login sessions for enabled Threads accounts.",
+            503,
+        )
+
+    use_accounts = valid_accounts
+    if max_accounts > 0:
+        use_accounts = valid_accounts[:max_accounts]
+
     try:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=True)
             contexts: list[BrowserContext] = []
             try:
-                for account in accounts or [None]:
+                for account in use_accounts or [None]:
                     proxy_cfg = (
                         playwright_proxy(account.proxy.get_secret_value())
                         if account and account.proxy and use_proxy

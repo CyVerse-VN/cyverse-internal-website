@@ -67,6 +67,6 @@ services:
       - key: THREADS_EMBEDDED_WORKER
         value: "true"
       - key: THREADS_ANONYMOUS
-        value: "false"
+        value: "true"
       - key: THREADS_ACCOUNTS
         sync: false

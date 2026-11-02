@@ -1,3 +1,4 @@
+import json
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -6,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
+from app.auth.permissions import require_admin
 from app.db.session import get_db_session
 from app.models.user import User
 from app.tools.threads.repository import ThreadsRepository
@@ -52,12 +54,92 @@ async def analyze_keywords(
     return KeywordAnalysisResponse.model_validate(result)
 
 
+class ThreadsAccountItem(BaseModel):
+    id: str
+    username: str | None = None
+    enabled: bool
+    has_session: bool
+    is_expired: bool = False
+    expires_at: str | None = None
+
+
+class ThreadsAccountsResponse(BaseModel):
+    accounts: list[ThreadsAccountItem]
+
+
+class SessionImportRequest(BaseModel):
+    session_data: dict[str, object]
+
+
+class SessionImportResponse(BaseModel):
+    account_id: str
+    updated_at: str
+    status: str
+    expires_at: str | None = None
+
+
+class SessionBatchImportRequest(BaseModel):
+    bundle: dict[str, object] | list[object]
+
+
+class SessionBatchImportResponse(BaseModel):
+    imported: list[SessionImportResponse]
+    warnings: list[str] = Field(default_factory=list)
+    total_imported: int
+
+
 @router.get("/config", response_model=ThreadsConfigResponse)
 async def get_threads_config(
     _user: Annotated[User, Depends(get_current_user)],
     service: Annotated[ThreadsService, Depends(get_threads_service)],
 ) -> ThreadsConfigResponse:
+    await service.restore_sessions_from_db()
     return service.get_config()
+
+
+@router.get("/accounts", response_model=ThreadsAccountsResponse)
+async def list_threads_accounts(
+    _user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[ThreadsService, Depends(get_threads_service)],
+) -> ThreadsAccountsResponse:
+    await service.restore_sessions_from_db()
+    return ThreadsAccountsResponse(accounts=[ThreadsAccountItem.model_validate(acc) for acc in service.list_accounts()])
+
+
+@router.post("/accounts/{account_id}/session", response_model=SessionImportResponse)
+async def import_threads_session(
+    account_id: str,
+    payload: SessionImportRequest,
+    _admin: Annotated[User, Depends(require_admin)],
+    service: Annotated[ThreadsService, Depends(get_threads_service)],
+) -> SessionImportResponse:
+    result = await service.import_session(account_id, payload.session_data)
+    return SessionImportResponse.model_validate(result)
+
+
+@router.post("/sessions/batch", response_model=SessionBatchImportResponse)
+async def import_bundled_threads_sessions(
+    payload: SessionBatchImportRequest,
+    _admin: Annotated[User, Depends(require_admin)],
+    service: Annotated[ThreadsService, Depends(get_threads_service)],
+) -> SessionBatchImportResponse:
+    result = await service.import_bundled_sessions(payload.bundle)
+    return SessionBatchImportResponse.model_validate(result)
+
+
+@router.get("/sessions/export")
+async def export_threads_sessions(
+    _admin: Annotated[User, Depends(require_admin)],
+    service: Annotated[ThreadsService, Depends(get_threads_service)],
+) -> Response:
+    data = await service.export_bundled_sessions()
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    headers = {
+        "Content-Disposition": 'attachment; filename="threads_sessions.json"',
+        "Content-Type": "application/json; charset=utf-8",
+    }
+    return Response(content=content, headers=headers, media_type="application/json")
+
 
 
 @router.post("/runs", response_model=ThreadsRunResponse, status_code=status.HTTP_202_ACCEPTED)

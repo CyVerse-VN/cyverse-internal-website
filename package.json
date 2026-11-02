@@ -17,6 +17,7 @@
     "admin:create": "uv run --project apps/backend python -m app.auth.bootstrap_admin",
     "threads:install": "uv run --project apps/backend python -m playwright install chromium",
     "threads:login": "uv run --project apps/backend python -m app.tools.threads.auth",
+    "threads:bundle": "uv run --project apps/backend python -m app.tools.threads.auth --bundle",
     "threads:worker": "uv run --project apps/backend python -m app.workers.threads",
     "build": "pnpm build:web",
     "start": "pnpm --filter @cyverse/web start",

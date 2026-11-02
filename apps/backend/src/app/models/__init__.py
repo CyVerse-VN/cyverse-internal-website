@@ -2,7 +2,12 @@
 
 from app.models.notebook_import import NotebookImport
 from app.models.research import ResearchPaper, ResearchSession
-from app.models.threads import ThreadsCommentRecord, ThreadsPostRecord, ThreadsResultRecord
+from app.models.threads import (
+    ThreadsAccountSessionRecord,
+    ThreadsCommentRecord,
+    ThreadsPostRecord,
+    ThreadsResultRecord,
+)
 from app.models.tool_run import ToolRun, ToolRunEvent
 from app.models.user import ROLE_ADMIN, ROLE_MEMBER, User
 
@@ -12,6 +17,7 @@ __all__ = [
     "NotebookImport",
     "ResearchPaper",
     "ResearchSession",
+    "ThreadsAccountSessionRecord",
     "ThreadsCommentRecord",
     "ThreadsPostRecord",
     "ThreadsResultRecord",

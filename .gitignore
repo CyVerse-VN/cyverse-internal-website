@@ -40,6 +40,9 @@ pip-wheel-metadata/
 
 # Backend tool login sessions and local data
 apps/backend/.local/
+threads_sessions.json
+*sessions.json
+
 
 # Editors and local tooling
 .idea/

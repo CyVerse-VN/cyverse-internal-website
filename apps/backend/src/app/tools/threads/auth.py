@@ -13,6 +13,7 @@ from playwright.async_api import Error as PlaywrightError
 from app.tools.threads.config import ThreadsAccount, ThreadsConfig, threads_config
 from app.tools.threads.crawler import playwright_proxy
 from app.tools.threads.errors import ThreadsError
+from app.tools.threads.session import create_session_bundle
 
 
 async def first_visible(page: Page, selectors: str, timeout_seconds: float = 20) -> Locator:
@@ -33,9 +34,15 @@ async def submit_credentials(page: Page, account: ThreadsAccount) -> None:
             "LOGIN_CREDENTIALS_REQUIRED",
             "Configure the account username and password or use --manual.",
         )
-    username = await first_visible(page, 'input[name="username"], input[autocomplete="username"]')
+    username = await first_visible(
+        page,
+        'input[autocomplete="username"], input[name="username"], input[type="text"]',
+        timeout_seconds=30,
+    )
     password = await first_visible(
-        page, 'input[name="password"], input[autocomplete="current-password"]'
+        page,
+        'input[autocomplete="current-password"], input[name="password"], input[type="password"]',
+        timeout_seconds=30,
     )
     await username.fill(account.username.get_secret_value())
     await password.fill(account.password.get_secret_value())
@@ -63,6 +70,31 @@ async def submit_credentials(page: Page, account: ThreadsAccount) -> None:
         await code_field.press("Enter")
 
 
+def bundle_local_sessions(config: ThreadsConfig) -> Path:
+    """Bundle all available local session files into threads_sessions.json."""
+    sessions: dict[str, dict[str, object]] = {}
+    for account in config.accounts:
+        account_path = config.session_path(account)
+        if account_path.is_file():
+            try:
+                data = json.loads(account_path.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and "cookies" in data:
+                    sessions[account.id] = data
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+                continue
+
+    bundle = create_session_bundle(sessions)
+    bundle_path = config.sessions_dir / "threads_sessions.json"
+    bundle_path.parent.mkdir(parents=True, exist_ok=True)
+    content = json.dumps(bundle, indent=2, ensure_ascii=False)
+    bundle_path.write_text(content, encoding="utf-8")
+    try:
+        Path("threads_sessions.json").write_text(content, encoding="utf-8")
+    except OSError:
+        pass
+    return bundle_path
+
+
 async def save_session(context: BrowserContext, path: Path) -> None:
     state = await context.storage_state()
     authenticated = any(
@@ -85,6 +117,8 @@ async def save_session(context: BrowserContext, path: Path) -> None:
         os.replace(temporary, path)
     finally:
         Path(temporary).unlink(missing_ok=True)
+
+    bundle_local_sessions(threads_config)
 
 
 async def login_account(
@@ -140,7 +174,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Create a Threads session using the shared backend environment."
     )
-    parser.add_argument("account_id", help="Account ID from THREADS_ACCOUNTS")
+    parser.add_argument("account_id", nargs="?", default=None, help="Account ID from THREADS_ACCOUNTS")
+    parser.add_argument(
+        "--bundle", action="store_true", help="Bundle existing local sessions into threads_sessions.json"
+    )
     parser.add_argument(
         "--manual", action="store_true", help="Complete login in the browser manually"
     )
@@ -151,6 +188,14 @@ def main() -> None:
         "--timeout", type=int, default=180, help="Seconds allowed for login and verification"
     )
     args = parser.parse_args()
+    if args.bundle:
+        bundle_path = bundle_local_sessions(threads_config)
+        print(f"Threads sessions bundled into {bundle_path}.")
+        return
+
+    if not args.account_id:
+        parser.error("account_id is required unless --bundle is specified")
+
     if not 10 <= args.timeout <= 600:
         parser.error("--timeout must be between 10 and 600 seconds")
     try:
@@ -166,6 +211,7 @@ def main() -> None:
     except ThreadsError as error:
         raise SystemExit(error.detail) from None
     print("Threads login session saved.")
+
 
 
 if __name__ == "__main__":

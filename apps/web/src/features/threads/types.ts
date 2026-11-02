@@ -91,3 +91,12 @@ export type ThreadsPost = z.infer<typeof threadsPostSchema>;
 export type ThreadsConfig = z.infer<typeof threadsConfigSchema>;
 export type KeywordGroupItem = z.infer<typeof keywordGroupItemSchema>;
 export type KeywordAnalysisResponse = z.infer<typeof keywordAnalysisResponseSchema>;
+
+export interface ThreadsAccountItem {
+  id: string;
+  username: string | null;
+  enabled: boolean;
+  has_session: boolean;
+  is_expired?: boolean;
+  expires_at?: string | null;
+}

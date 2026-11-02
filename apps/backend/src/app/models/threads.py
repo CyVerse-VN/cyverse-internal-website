@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from app.db.base import Base, utc_now
 from app.models.tool_run import JSON_TYPE
 
 
@@ -73,3 +73,18 @@ class ThreadsCommentRecord(Base):
     parent_comment_id: Mapped[str | None] = mapped_column(String(128))
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     data: Mapped[dict[str, object]] = mapped_column(JSON_TYPE, nullable=False)
+
+
+class ThreadsAccountSessionRecord(Base):
+    """Persisted Playwright browser storage state for a configured Threads account."""
+
+    __tablename__ = "threads_account_sessions"
+
+    account_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    session_data: Mapped[dict[str, object]] = mapped_column(JSON_TYPE, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        nullable=False,
+    )
+

@@ -479,6 +479,7 @@ export function ThreadsWorkspace() {
                         setFormError(null);
                       }}
                       onSubmit={submitTravel}
+                      onRefreshConfig={() => setRetry((c) => c + 1)}
                     />
                   ) : (
                     <ThreadsForm
@@ -491,6 +492,7 @@ export function ThreadsWorkspace() {
                       onQuery={setQuery}
                       onChange={updateParameters}
                       onSubmit={submit}
+                      onRefreshConfig={() => setRetry((c) => c + 1)}
                       onReset={() => {
                         const defaults = config?.defaults ?? DEFAULT_THREADS_PARAMETERS;
                         updateParameters(

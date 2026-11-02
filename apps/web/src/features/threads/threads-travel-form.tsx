@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
+  AlertTriangle,
   Clock3,
   Compass,
   FolderPlus,
@@ -10,6 +12,7 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Settings,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -22,13 +25,16 @@ import {
   Tent,
   X,
   ChevronDown,
+  KeyRound,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/i18n/context";
+import { ImportSessionModal } from "./import-session-modal";
 import { threadsApi } from "./api";
 import {
   keywordAnalysisResponseSchema,
+  type ThreadsAccountItem,
   type ThreadsConfig,
   type ThreadsParameters,
 } from "./types";
@@ -89,6 +95,7 @@ export function ThreadsTravelForm({
   onChange,
   onReset,
   onSubmit,
+  onRefreshConfig,
 }: {
   config: ThreadsConfig | null;
   parameters: ThreadsParameters;
@@ -98,9 +105,29 @@ export function ThreadsTravelForm({
   onChange: (value: Partial<ThreadsParameters>) => void;
   onReset: () => void;
   onSubmit: (prompt: string, selectedKeywords: string[]) => void;
+  onRefreshConfig?: () => void;
 }) {
   const { t, language } = useLanguage();
   const ready = config?.enabled && config.accounts_ready;
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [accounts, setAccounts] = useState<ThreadsAccountItem[]>([]);
+
+  useEffect(() => {
+    let ignore = false;
+    fetch("/api/threads/accounts")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!ignore && Array.isArray(data.accounts)) {
+          setAccounts(data.accounts);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
+    };
+  }, [config]);
+
+  const expiredAccounts = accounts.filter((a) => a.has_session && a.is_expired);
 
   // Prompt state
   const [selectedCity, setSelectedCity] = useState("TP. Hồ Chí Minh");
@@ -259,19 +286,30 @@ export function ThreadsTravelForm({
           <Compass size={17} />
           <h2>{t("threads.configTitle")} — {t("threads.tabTravel")}</h2>
         </div>
-        <button
-          type="button"
-          className={styles.textButton}
-          onClick={() => {
-            onReset();
-            setGroups(INITIAL_GROUPS);
-            setSelectedKeywords(new Set(INITIAL_GROUPS.flatMap((g) => g.keywords)));
-            setPrompt("Tìm các quán ăn ngon núp hẻm, quán ốc, lẩu ít người biết quanh TP. Hồ Chí Minh và cafe view chill");
-          }}
-        >
-          <RotateCcw size={13} />
-          {t("threads.reset")}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <button
+            type="button"
+            className={styles.textButton}
+            onClick={() => setShowImportModal(true)}
+            title="Import or update Threads session"
+          >
+            <KeyRound size={13} />
+            Session
+          </button>
+          <button
+            type="button"
+            className={styles.textButton}
+            onClick={() => {
+              onReset();
+              setGroups(INITIAL_GROUPS);
+              setSelectedKeywords(new Set(INITIAL_GROUPS.flatMap((g) => g.keywords)));
+              setPrompt("Tìm các quán ăn ngon núp hẻm, quán ốc, lẩu ít người biết quanh TP. Hồ Chí Minh và cafe view chill");
+            }}
+          >
+            <RotateCcw size={13} />
+            {t("threads.reset")}
+          </button>
+        </div>
       </div>
 
       {/* Step 1: City quick filter */}
@@ -878,10 +916,60 @@ export function ThreadsTravelForm({
         )}
       </section>
 
+      {expiredAccounts.length > 0 && (
+        <div className={styles.notice} role="status" style={{ borderLeft: ready ? "4px solid #f59e0b" : "4px solid #ef4444" }}>
+          <div className="flex items-start gap-2">
+            <AlertTriangle className={`h-4 w-4 ${ready ? "text-amber-500" : "text-red-500"} shrink-0 mt-0.5`} />
+            <div>
+              <p style={{ margin: 0, fontWeight: 600, color: ready ? "#d97706" : "#ef4444" }}>
+                {language === "vi" ? "Lưu ý phiên tài khoản" : "Session Notice"}
+              </p>
+              <p style={{ margin: "2px 0 8px 0", fontSize: "0.85rem" }}>
+                {language === "vi"
+                  ? ready
+                    ? `Tài khoản (${expiredAccounts.map((a) => a.id).join(", ")}) có phiên đăng nhập đã hết hạn. Hệ thống sẽ tự động dùng các tài khoản đang hoạt động còn lại để cào dữ liệu.`
+                    : `Tài khoản (${expiredAccounts.map((a) => a.id).join(", ")}) có phiên đăng nhập đã hết hạn. Vui lòng liên hệ Admin để cập nhật lại session JSON trong Cài đặt.`
+                  : ready
+                    ? `Session for account(s) ${expiredAccounts.map((a) => a.id).join(", ")} is expired. The system will automatically skip them and use the active accounts.`
+                    : `Session for account(s) ${expiredAccounts.map((a) => a.id).join(", ")} has expired. Please ask an administrator to update the session JSON in Settings.`}
+              </p>
+              <Button variant="outline" size="sm" asChild className="gap-1.5 text-xs">
+                <Link href="/settings/account">
+                  <Settings size={13} />
+                  {language === "vi" ? "Đi đến Cài đặt" : "Open Settings"}
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {config && !ready && (
-        <p className={styles.notice} role="status">
-          Threads collection needs setup. Ask an administrator to enable the tool and connect an account.
-        </p>
+        <div className={styles.notice} role="status">
+          <p style={{ margin: 0, marginBottom: "8px" }}>
+            {language === "vi"
+              ? "Thu thập Threads chưa có tài khoản nào sẵn sàng. Vui lòng liên hệ Admin cấu hình phiên trong Cài đặt."
+              : "Threads collection needs setup. Ask an administrator to configure an account session in Settings."}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild className="gap-1.5">
+              <Link href="/settings/account">
+                <Settings size={13} />
+                {language === "vi" ? "Đi đến Cài đặt" : "Open Settings"}
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowImportModal(true)}
+              className="gap-1.5 text-xs text-slate-500 hover:text-slate-700"
+            >
+              <KeyRound size={13} />
+              Import Session JSON (Admin)
+            </Button>
+          </div>
+        </div>
       )}
 
       {error && (
@@ -919,6 +1007,12 @@ export function ThreadsTravelForm({
       <p className={styles.formFootnote}>
         Các bài viết được tự động đối chiếu ID và URL để lọc trùng lặp hoàn toàn.
       </p>
+
+      <ImportSessionModal
+        open={showImportModal}
+        onOpenChange={setShowImportModal}
+        onSuccess={onRefreshConfig}
+      />
     </form>
   );
 }

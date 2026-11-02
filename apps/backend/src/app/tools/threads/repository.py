@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import timedelta
 from uuid import UUID
 
@@ -7,7 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.base import utc_now
-from app.models.threads import ThreadsCommentRecord, ThreadsPostRecord, ThreadsResultRecord
+from app.models.threads import (
+    ThreadsAccountSessionRecord,
+    ThreadsCommentRecord,
+    ThreadsPostRecord,
+    ThreadsResultRecord,
+)
 from app.models.tool_run import ToolRun
 from app.models.user import ROLE_ADMIN, User
 from app.tools.threads.cloudinary import archive_public_id
@@ -412,6 +419,32 @@ class ThreadsRepository:
             raise ThreadsError("SESSION_BUSY", "The session must stop before cleanup.", 409)
         await self.session.delete(run)
         await self.session.commit()
+
+    async def get_account_session(self, account_id: str) -> ThreadsAccountSessionRecord | None:
+        return await self.session.get(ThreadsAccountSessionRecord, account_id)
+
+    async def list_account_sessions(self) -> list[ThreadsAccountSessionRecord]:
+        result = await self.session.scalars(select(ThreadsAccountSessionRecord))
+        return list(result.all())
+
+    async def save_account_session(
+        self, account_id: str, session_data: dict[str, object]
+    ) -> ThreadsAccountSessionRecord:
+        record = await self.session.get(ThreadsAccountSessionRecord, account_id)
+        if record is None:
+            record = ThreadsAccountSessionRecord(
+                account_id=account_id,
+                session_data=session_data,
+                updated_at=utc_now(),
+            )
+            self.session.add(record)
+        else:
+            record.session_data = session_data
+            record.updated_at = utc_now()
+        await self.session.commit()
+        await self.session.refresh(record)
+        return record
+
 
 
 def to_response(

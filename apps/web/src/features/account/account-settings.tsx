@@ -10,6 +10,7 @@ import {
   changePasswordAction,
   updateProfileAction,
 } from "@/features/account/actions";
+import { ThreadsSessionSettings } from "@/features/account/threads-session-settings";
 import { useLanguage } from "@/lib/i18n/context";
 import type { AuthUser } from "@/lib/auth/types";
 import { INITIAL_ACTION_STATE } from "@/lib/auth/types";
@@ -149,6 +150,8 @@ export function AccountSettings({ user }: { user: AuthUser }) {
               </div>
             </form>
           </section>
+
+          {user.role === "admin" && <ThreadsSessionSettings />}
         </div>
       </div>
     </main>

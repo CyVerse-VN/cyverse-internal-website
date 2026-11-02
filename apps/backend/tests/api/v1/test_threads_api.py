@@ -29,9 +29,18 @@ def test_all_threads_routes_require_authentication() -> None:
     )
     assert client.delete(f"/api/v1/tools/threads/runs/{run_id}").status_code == 401
     assert client.get(f"/api/v1/tools/threads/runs/{run_id}/export").status_code == 401
+    assert client.get("/api/v1/tools/threads/accounts").status_code == 401
+    assert (
+        client.post(
+            "/api/v1/tools/threads/accounts/acc_01/session", json={"session_data": {}}
+        ).status_code
+        == 401
+    )
+    assert client.post("/api/v1/tools/threads/sessions/batch", json={"bundle": {}}).status_code == 401
+    assert client.get("/api/v1/tools/threads/sessions/export").status_code == 401
 
 
-def setup_client() -> tuple[TestClient, SimpleNamespace, ThreadsRunResponse]:
+def setup_client(role: str = "member") -> tuple[TestClient, SimpleNamespace, ThreadsRunResponse]:
     run = ThreadsRunResponse(
         id=uuid4(),
         status="queued",
@@ -50,7 +59,7 @@ def setup_client() -> tuple[TestClient, SimpleNamespace, ThreadsRunResponse]:
         delete=AsyncMock(return_value=run),
     )
     app = create_app()
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=uuid4(), role="member")
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=uuid4(), role=role)
     app.dependency_overrides[get_threads_service] = lambda: service
     return TestClient(app), service, run
 
@@ -135,3 +144,71 @@ def test_visibility_updates_and_deletion_are_dispatched_and_validated() -> None:
     )
     assert client.delete(f"/api/v1/tools/threads/runs/{run.id}").status_code == 202
     service.delete.assert_awaited_once()
+
+
+def test_threads_accounts_and_session_import() -> None:
+    client, service, _ = setup_client(role="member")
+    service.restore_sessions_from_db = AsyncMock()
+    service.list_accounts = lambda: [
+        {"id": "acc_01", "username": "user1", "enabled": True, "has_session": False, "is_expired": False, "expires_at": None}
+    ]
+    service.import_session = AsyncMock(
+        return_value={"account_id": "acc_01", "updated_at": "2026-11-03T00:00:00Z", "status": "ready", "expires_at": None}
+    )
+
+    accounts_resp = client.get("/api/v1/tools/threads/accounts")
+    assert accounts_resp.status_code == 200
+    assert accounts_resp.json() == {
+        "accounts": [{"id": "acc_01", "username": "user1", "enabled": True, "has_session": False, "is_expired": False, "expires_at": None}]
+    }
+
+    # Regular member is forbidden from importing session
+    member_import = client.post(
+        "/api/v1/tools/threads/accounts/acc_01/session",
+        json={"session_data": {"cookies": [{"name": "sessionid", "value": "xyz", "domain": ".threads.com"}]}},
+    )
+    assert member_import.status_code == 403
+
+    # Admin can import session successfully
+    admin_client, admin_service, _ = setup_client(role="admin")
+    admin_service.import_session = AsyncMock(
+        return_value={"account_id": "acc_01", "updated_at": "2026-11-03T00:00:00Z", "status": "ready", "expires_at": None}
+    )
+    admin_import = admin_client.post(
+        "/api/v1/tools/threads/accounts/acc_01/session",
+        json={"session_data": {"cookies": [{"name": "sessionid", "value": "xyz", "domain": ".threads.com"}]}},
+    )
+    assert admin_import.status_code == 200
+    assert admin_import.json()["status"] == "ready"
+    admin_service.import_session.assert_awaited_once()
+
+    # Member is forbidden from batch import and export
+    assert client.post("/api/v1/tools/threads/sessions/batch", json={"bundle": {}}).status_code == 403
+    assert client.get("/api/v1/tools/threads/sessions/export").status_code == 403
+
+    # Admin batch import
+    admin_service.import_bundled_sessions = AsyncMock(
+        return_value={
+            "imported": [{"account_id": "acc_01", "updated_at": "2026-11-03T00:00:00Z", "status": "ready", "expires_at": None}],
+            "warnings": [],
+            "total_imported": 1,
+        }
+    )
+    batch_resp = admin_client.post(
+        "/api/v1/tools/threads/sessions/batch",
+        json={"bundle": {"acc_01": {"cookies": [{"name": "sessionid", "value": "xyz", "domain": ".threads.com"}]}}},
+    )
+    assert batch_resp.status_code == 200
+    assert batch_resp.json()["total_imported"] == 1
+    admin_service.import_bundled_sessions.assert_awaited_once()
+
+    # Admin export
+    admin_service.export_bundled_sessions = AsyncMock(
+        return_value={"version": 1, "sessions": {"acc_01": {"cookies": []}}}
+    )
+    export_resp = admin_client.get("/api/v1/tools/threads/sessions/export")
+    assert export_resp.status_code == 200
+    assert "threads_sessions.json" in export_resp.headers["content-disposition"]
+    assert export_resp.json()["version"] == 1
+    admin_service.export_bundled_sessions.assert_awaited_once()
+
