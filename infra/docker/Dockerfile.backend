@@ -32,6 +32,10 @@ ENV PATH="/app/apps/backend/.venv/bin:$PATH" \
 COPY --from=builder /app/apps/backend/.venv /app/apps/backend/.venv
 COPY --from=builder /app/apps/backend /app/apps/backend
 
+# Install Playwright Chromium and system dependencies for browser scraping
+RUN playwright install --with-deps chromium && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app/apps/backend
 
 EXPOSE 8000

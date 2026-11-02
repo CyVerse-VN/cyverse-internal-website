@@ -60,3 +60,13 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+
+      # Threads scraper configuration.
+      - key: THREADS_ENABLED
+        value: "true"
+      - key: THREADS_EMBEDDED_WORKER
+        value: "true"
+      - key: THREADS_ANONYMOUS
+        value: "false"
+      - key: THREADS_ACCOUNTS
+        sync: false
