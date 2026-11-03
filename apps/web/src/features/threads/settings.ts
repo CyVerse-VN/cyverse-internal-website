@@ -24,10 +24,11 @@ export function saveThreadsPanels(storage: Pick<Storage, "setItem">, panels: Thr
   }
 }
 
-export const THREADS_SETTINGS_KEY = "cyverse.threads.settings.v1";
+export const THREADS_SETTINGS_KEY = "cyverse.threads.settings.v2";
+const LEGACY_THREADS_SETTINGS_KEY = "cyverse.threads.settings.v1";
 export const DEFAULT_THREADS_PARAMETERS: ThreadsParameters = {
   mode: "scraper",
-  keywords: [], max_posts_per_keyword: 25, search_type: "recent", check_duplicate: true, include_comments: true,
+  keywords: [], max_posts_per_keyword: 25, search_type: "recent", check_duplicate: false, include_comments: true,
   max_comment_posts: -1, max_comments_per_post: 25, min_replies: 0,
   expand_query: true, keywords_per_query: 3, pre_filter: false, pre_filter_strictness: "high", curate: false,
   max_accounts: 3, use_proxy: true,
@@ -41,10 +42,11 @@ export function parseKeywords(value: string): string[] {
 
 export function loadThreadsSettings(storage: Pick<Storage, "getItem">): ThreadsParameters | null {
   try {
-    const raw = storage.getItem(THREADS_SETTINGS_KEY);
+    const current = storage.getItem(THREADS_SETTINGS_KEY);
+    const raw = current ?? storage.getItem(LEGACY_THREADS_SETTINGS_KEY);
     if (!raw) return null;
     const parsed = threadsParametersSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
+    return parsed.success ? (current === null ? { ...parsed.data, check_duplicate: false } : parsed.data) : null;
   } catch {
     // An unavailable browser store or old preferences must not block a new run.
     return null;

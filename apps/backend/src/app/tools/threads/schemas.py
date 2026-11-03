@@ -12,7 +12,7 @@ class ThreadsParameters(BaseModel):
     keywords: list[str] = Field(default_factory=list, max_length=20)
     max_posts_per_keyword: int = Field(default=25, ge=1, le=100)
     search_type: Literal["top", "recent", "both"] = "recent"
-    check_duplicate: bool = True
+    check_duplicate: bool = False
     include_comments: bool = True
     max_comment_posts: int = Field(default=-1, ge=-1, le=500)
     max_comments_per_post: int = Field(default=25, ge=-1, le=500)
@@ -72,7 +72,6 @@ class ThreadsConfigResponse(BaseModel):
     accounts_ready: bool
     ai_available: bool
     cloudinary_ready: bool = False
-    txt_archive_enabled: bool = False
     defaults: ThreadsParameters
     limits: dict[str, int]
 

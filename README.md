@@ -127,5 +127,7 @@ pnpm.cmd build:web
 - `scripts`: script dùng ở cấp repository.
 
 Xem hướng dẫn riêng tại `apps/web/README.md` và `apps/backend/README.md`.
+Hướng dẫn cấu hình, thu thập, xuất dữ liệu và chống trùng Threads nằm tại
+[docs/tools/threads.md](docs/tools/threads.md).
 
 Baseline runtime, framework và tooling được ghi tại `docs/technology-baseline.md`.

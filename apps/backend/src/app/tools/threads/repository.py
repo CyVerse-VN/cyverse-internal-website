@@ -17,7 +17,6 @@ from app.models.threads import (
 )
 from app.models.tool_run import ToolRun
 from app.models.user import ROLE_ADMIN, User
-from app.tools.threads.cloudinary import archive_public_id
 from app.tools.threads.content import clean_stored_comment
 from app.tools.threads.errors import ThreadsCancelled, ThreadsError
 from app.tools.threads.schemas import ThreadsRequest, ThreadsResult, ThreadsRunResponse
@@ -346,13 +345,7 @@ class ThreadsRepository:
         snapshot.next_storage_attempt_at = None
         await self.session.commit()
 
-    async def next_storage_run(self, *, include_archives: bool = True) -> UUID | None:
-        needs_storage = ThreadsResultRecord.deletion_requested.is_(True)
-        if include_archives:
-            needs_storage = or_(
-                needs_storage,
-                (ToolRun.status != "cancelled") & (ThreadsResultRecord.archive_status != "ready"),
-            )
+    async def next_storage_run(self) -> UUID | None:
         return await self.session.scalar(
             select(ThreadsResultRecord.run_id)
             .join(
@@ -366,40 +359,11 @@ class ThreadsRepository:
                     ThreadsResultRecord.next_storage_attempt_at.is_(None),
                     ThreadsResultRecord.next_storage_attempt_at <= utc_now(),
                 ),
-                needs_storage,
+                ThreadsResultRecord.deletion_requested.is_(True),
             )
             .order_by(ThreadsResultRecord.deletion_requested.desc(), ToolRun.created_at)
             .limit(1)
         )
-
-    async def prepare_archive(self, run_id: UUID) -> ThreadsRunResponse | None:
-        run = await self._locked(run_id)
-        snapshot = self._ensure_snapshot(run)
-        if (
-            snapshot.deletion_requested
-            or run.status not in TERMINAL_STATUSES
-            or run.status == "cancelled"
-        ):
-            return None
-        # Persist the deterministic ID before sending bytes, including uncertain upload outcomes.
-        target_id = archive_public_id(run_id)
-        if snapshot.archive_public_id and snapshot.archive_public_id != target_id:
-            snapshot.legacy_archive_public_id = snapshot.archive_public_id
-        snapshot.archive_public_id = target_id
-        snapshot.archive_status = "uploading"
-        await self.session.commit()
-        return to_response(run)
-
-    async def archive_ready(self, run_id: UUID, visibility: str) -> None:
-        run = await self._locked(run_id)
-        snapshot = self._ensure_snapshot(run)
-        snapshot.archive_status = "ready" if snapshot.visibility == visibility else "pending"
-        snapshot.archive_uploaded_at = utc_now()
-        snapshot.legacy_archive_public_id = None
-        snapshot.storage_error = None
-        snapshot.storage_attempt_count = 0
-        snapshot.next_storage_attempt_at = None
-        await self.session.commit()
 
     async def storage_failed(self, run_id: UUID, error: ThreadsError) -> None:
         run = await self._locked(run_id)

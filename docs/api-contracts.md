@@ -8,7 +8,10 @@ cho user đã đăng nhập; private chỉ owner/admin xem. `POST` nhận `visib
 `POST /{id}/cancel` yêu cầu hủy, `PATCH /{id}` đổi visibility, `DELETE /{id}` trả `202` và
 yêu cầu xóa cloud rồi hard-delete database. Mọi mutation chỉ owner/admin. Response có
 `deletion_requested` trong lúc cleanup; sau khi xóa xong trả `404`.
-`GET /{id}/export?format=json|txt` tải snapshot đã lưu; TXT chứa toàn bộ dữ liệu session,
+`check_duplicate` mặc định `false`; `true` bỏ qua post ID đã có trong session không bị
+hủy của cùng owner. Dù giá trị nào, kết quả trùng ID hoặc URL trong cùng lượt được gộp.
+`GET /{id}/export?format=json&detail=basic|standard|full` tải JSON theo mức đã chọn;
+mặc định `basic`. `format=txt` tải TXT theo yêu cầu chứa dữ liệu session,
 metadata, ID và quan hệ cha–con của bình luận. API không còn hỗ trợ `format=md`.
 Tạo job hỗ trợ `Idempotency-Key`; các tham số account, proxy, đường dẫn và credentials
 chỉ được cấu hình server-side. Xem [request/response và setup Threads](tools/threads.md).

@@ -120,6 +120,25 @@ async def save_session(context: BrowserContext, path: Path) -> None:
         Path(temporary).unlink(missing_ok=True)
 
 
+async def login_in_context(
+    page: Page, context: BrowserContext, account: ThreadsAccount, path: Path,
+    *, manual: bool = False, timeout_seconds: int = 180,
+) -> None:
+    await page.goto("https://www.threads.com/login", wait_until="domcontentloaded", timeout=45000)
+    if not manual:
+        await submit_credentials(page, account)
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    while asyncio.get_running_loop().time() < deadline:
+        cookies = await context.cookies()
+        if any(cookie["name"] == "sessionid" and cookie["value"] for cookie in cookies):
+            await page.goto("https://www.threads.com/", wait_until="domcontentloaded", timeout=30000)
+            if "/login" not in page.url and "/challenge" not in page.url:
+                await save_session(context, path)
+                return
+        await page.wait_for_timeout(1000)
+    raise ThreadsError("LOGIN_TIMEOUT", "Complete login and any verification prompts before retrying.")
+
+
 async def login_account(
     config: ThreadsConfig, account_id: str, *, manual: bool, headless: bool, timeout_seconds: int
 ) -> None:
@@ -142,26 +161,9 @@ async def login_account(
                     viewport={"width": 1280, "height": 900},
                 )
                 page = await context.new_page()
-                await page.goto(
-                    "https://www.threads.com/login", wait_until="domcontentloaded", timeout=45000
-                )
-                if not manual:
-                    await submit_credentials(page, account)
-                deadline = asyncio.get_running_loop().time() + timeout_seconds
-                while asyncio.get_running_loop().time() < deadline:
-                    cookies = await context.cookies()
-                    if any(cookie["name"] == "sessionid" and cookie["value"] for cookie in cookies):
-                        await page.goto(
-                            "https://www.threads.com/", wait_until="domcontentloaded", timeout=30000
-                        )
-                        if "/login" not in page.url and "/challenge" not in page.url:
-                            await save_session(context, config.session_path(account))
-                            bundle_local_sessions(config)
-                            return
-                    await page.wait_for_timeout(1000)
-                raise ThreadsError(
-                    "LOGIN_TIMEOUT", "Complete login and any verification prompts before retrying."
-                )
+                await login_in_context(page, context, account, config.session_path(account),
+                                       manual=manual, timeout_seconds=timeout_seconds)
+                bundle_local_sessions(config)
             finally:
                 await browser.close()
     except (PlaywrightError, OSError, ValueError):

@@ -20,8 +20,8 @@ Không lưu secret trong repository. Xác thực, phân quyền và các hàm m�
 
 Threads session mới mặc định public cho user đã đăng nhập; private chỉ owner/admin đọc.
 Public chỉ cấp quyền đọc/export, không cấp quyền hủy, đổi visibility hoặc xóa cho viewer.
-Session cũ giữ private sau migration. Cloudinary credentials chỉ ở backend; TXT được
-upload dạng raw authenticated bằng chữ ký SHA-256, không trả delivery URL/chữ ký cho browser.
+Session cũ giữ private sau migration. Cloudinary credentials chỉ ở backend và chỉ dùng
+cleanup asset cũ; không upload TXT mới.
 Download đi qua API đã kiểm tra quyền và dùng attachment/no-store/nosniff. Nội dung Threads
 trong TXT nằm trong các dòng literal có tiền tố `|`. Xóa session giữ tombstone cho đến khi cloud cleanup
 được xác nhận, sau đó hard-delete database; retry không làm công khai session đang xóa.

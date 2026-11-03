@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { CrossSessionDedup } from "./cross-session-dedup";
 import {
   AlertCircle,
   AlertTriangle,
@@ -553,12 +554,9 @@ export function ThreadsTravelForm({
               {selectedCount} từ khóa
             </strong>
           </span>
-          <label className={styles.toggle}>
-            <input type="checkbox" checked={parameters.check_duplicate}
-              onChange={(event) => onChange({ check_duplicate: event.target.checked })} />
-            <span>Exclude posts from my previous sessions</span>
-          </label>
         </div>
+        <CrossSessionDedup enabled={parameters.check_duplicate}
+          onChange={(check_duplicate) => onChange({ check_duplicate })} />
       </section>
 
       {/* Step 4: Search Order & Posts per Keyword */}

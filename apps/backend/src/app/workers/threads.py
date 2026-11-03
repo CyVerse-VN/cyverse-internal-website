@@ -15,6 +15,7 @@ from app.tools.base.registry import ToolRegistry
 from app.tools.threads.artifacts import ThreadsArtifacts
 from app.tools.threads.cloudinary import CloudinaryTextStore, cloudinary_config
 from app.tools.threads.config import ThreadsConfig, threads_config
+from app.tools.threads.crawler import SessionCallback
 from app.tools.threads.errors import ThreadsCancelled, ThreadsError
 from app.tools.threads.pipeline import CancellationCallback, ProgressCallback, SnapshotCallback
 from app.tools.threads.repository import ThreadsRepository
@@ -42,6 +43,7 @@ class ThreadsWorker:
             on_progress: ProgressCallback,
             is_cancelled: CancellationCallback,
             on_snapshot: SnapshotCallback | None,
+            on_session: SessionCallback,
         ) -> dict[str, object]:
             registry = ToolRegistry()
             registry.register(
@@ -51,12 +53,17 @@ class ThreadsWorker:
                     is_cancelled,
                     on_snapshot,
                     existing_post_ids=existing_post_ids,
+                    on_session=on_session,
                 )
             )
             return await registry.get("threads").run(payload)
 
+        async def save_refreshed_session(account_id: str, state: dict[str, object]) -> None:
+            async with async_session_factory() as session:
+                await ThreadsRepository(session).save_account_session(account_id, state)
+
         if sys.platform != "win32":
-            return await registered_run(progress, cancelled, snapshot)
+            return await registered_run(progress, cancelled, snapshot, save_refreshed_session)
 
         # Psycopg needs Selector on Windows; Playwright subprocesses need Proactor.
         database_loop = asyncio.get_running_loop()
@@ -81,11 +88,17 @@ class ThreadsWorker:
                     )
                 )
 
+        async def forwarded_session(account_id: str, state: dict[str, object]) -> None:
+            await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(
+                save_refreshed_session(account_id, state), database_loop
+            ))
+
         async def browser_run() -> dict[str, object]:
             task = asyncio.current_task()
             assert task is not None
             ready.set_result((asyncio.get_running_loop(), task))
-            return await registered_run(forwarded_progress, forwarded_cancelled, forwarded_snapshot)
+            return await registered_run(forwarded_progress, forwarded_cancelled, forwarded_snapshot,
+                                        forwarded_session)
 
         def run_browser_loop() -> dict[str, object]:
             with asyncio.Runner(loop_factory=asyncio.ProactorEventLoop) as runner:
@@ -173,7 +186,6 @@ class ThreadsWorker:
         ):
             return await ThreadsArtifacts(
                 ThreadsRepository(session), CloudinaryTextStore(cloudinary_config, client),
-                archive_enabled=self.config.txt_archive_enabled,
             ).run_once()
 
     async def _monitor(
@@ -208,7 +220,7 @@ class ThreadsWorker:
             await self._snapshot(run_id, result)
 
         existing_post_ids: set[str] = set()
-        if payload.get("check_duplicate", True):
+        if payload.get("check_duplicate", False):
             async with async_session_factory() as session:
                 repo = ThreadsRepository(session)
                 if hasattr(repo, "get_existing_post_ids"):

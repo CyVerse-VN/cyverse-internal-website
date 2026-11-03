@@ -20,14 +20,14 @@ Groq adapter. Worker persist stage vào `tool_runs`, checkpoint selected posts t
 rồi cập nhật snapshots sau từng bài lấy comments/AI analysis trong
 `threads_results`/`threads_posts`/`threads_comments`. Session mới mặc định public cho user
 đã đăng nhập; private chỉ owner/admin đọc; mọi mutation chỉ owner/admin. JSON/TXT
-download kiểm tra cùng quyền. Consumer giữ hàng đợi archive/cleanup: một raw TXT
-asset authenticated trên Cloudinary cho mỗi session sau khi job dừng, retry độc lập khi
-cloud lỗi. Delete dừng pipeline, xóa cloud rồi hard-delete database bằng cascade. Consumer
+download kiểm tra cùng quyền. Không upload TXT mới; consumer cleanup các asset Cloudinary
+cũ khi xóa session, retry khi cloud lỗi trước khi hard-delete database. Consumer
 có advisory lock riêng, có thể chạy trong API
 lifespan hoặc qua CLI. JSON export chứa run metadata và result; mỗi bài/bình luận có thể
 chứa source record đã loại các trường xác thực phổ biến, cùng metadata
 thu thập. Không lưu toàn bộ network response. Worker khôi phục account sessions trước khi
-nhận job. Cấu hình dùng chung `apps/backend/.env`; browser sessions nằm trong
+nhận job và lưu lại database khi tự đăng nhập thành công. Keyword được phân bổ tuần tự
+giữa các account, mỗi keyword giữ một account cho các search mode. Cấu hình dùng chung `apps/backend/.env`; browser sessions nằm trong
 backend `.local/threads/sessions`. Xem [Threads tool](tools/threads.md).
 
 ## AI Research data flow

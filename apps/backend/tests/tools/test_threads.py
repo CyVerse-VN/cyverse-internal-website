@@ -26,7 +26,6 @@ from app.tools.threads.auth import save_session, submit_credentials
 from app.tools.threads.cloudinary import (
     CloudinaryConfig,
     CloudinaryTextStore,
-    archive_public_id,
 )
 from app.tools.threads.config import ThreadsAccount, ThreadsConfig
 from app.tools.threads.content import clean_stored_comment, dom_comment_text
@@ -237,6 +236,36 @@ async def test_browser_uses_requested_account_count(
 
 
 @pytest.mark.asyncio
+async def test_missing_session_is_refreshed_before_crawling_and_persisted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from app.tools.threads import auth as auth_module
+    from app.tools.threads import crawler as crawler_module
+
+    state = {"cookies": [{"name": "sessionid", "value": "fixture", "domain": ".threads.com"}]}
+    context = SimpleNamespace(route=AsyncMock(), clear_cookies=AsyncMock(),
+                              storage_state=AsyncMock(return_value=state), close=AsyncMock())
+    page = Mock()
+    page.context = context
+    context.new_page = AsyncMock(return_value=page)
+    browser = SimpleNamespace(new_context=AsyncMock(return_value=context), close=AsyncMock())
+
+    @asynccontextmanager
+    async def fake_playwright():
+        yield SimpleNamespace(chromium=SimpleNamespace(launch=AsyncMock(return_value=browser)))
+
+    login = AsyncMock()
+    saved = AsyncMock()
+    monkeypatch.setattr(crawler_module, "async_playwright", fake_playwright)
+    monkeypatch.setattr(auth_module, "login_in_context", login)
+    account = ThreadsAccount(id="one", username=SecretStr("user"), password=SecretStr("password"))
+    async with open_crawler(config(accounts=[account], sessions_dir=tmp_path), on_session=saved) as crawler:
+        assert len(crawler.pages) == 1
+    login.assert_awaited_once()
+    saved.assert_awaited_once_with("one", state)
+
+
+@pytest.mark.asyncio
 async def test_search_waits_for_delayed_data_instead_of_saving_an_empty_collection() -> None:
     page = SimpleNamespace(
         evaluate=AsyncMock(return_value={"top": 0, "height": 900, "viewport": 900}),
@@ -351,6 +380,58 @@ async def test_unlimited_search_does_not_apply_a_deadline(monkeypatch: pytest.Mo
     result = await crawler.search("travel", 2, "recent")
     assert len(result) == 2
     assert crawler._scripts.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_keyword_modes_stay_on_one_account_and_keywords_rotate() -> None:
+    pages = [Mock(), Mock()]
+    for page in pages:
+        page.evaluate = AsyncMock(return_value={"top": 0, "height": 900, "viewport": 900})
+        page.wait_for_timeout = AsyncMock()
+    crawler = PlaywrightThreadsCrawler(pages)
+    used: list[object] = []
+
+    @asynccontextmanager
+    async def sources(page, _url):
+        used.append(page)
+        yield []
+
+    crawler._sources = sources
+    crawler._scripts = AsyncMock(return_value=[search_source(1, more=False)])
+    for keyword in ("first", "first", "second", "second", "third"):
+        await crawler.search(keyword, 1, "recent")
+    assert used == [pages[0], pages[0], pages[1], pages[1], pages[0]]
+
+
+@pytest.mark.asyncio
+async def test_rejected_session_is_refreshed_once_and_saved(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from app.tools.threads import auth as auth_module
+
+    page = Mock()
+    page.context = SimpleNamespace(clear_cookies=AsyncMock(), storage_state=AsyncMock(return_value={"cookies": []}))
+    page.evaluate = AsyncMock(return_value={"top": 0, "height": 900, "viewport": 900})
+    crawler = PlaywrightThreadsCrawler(
+        [page], accounts={page: ThreadsAccount(id="one", username=SecretStr("user"), password=SecretStr("password"))},
+        config=config(sessions_dir=tmp_path), on_session=AsyncMock(),
+    )
+    calls = 0
+
+    @asynccontextmanager
+    async def sources(_page, _url):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ThreadsError("THREADS_REAUTH_REQUIRED", "Session rejected", 503)
+        yield []
+
+    crawler._sources = sources
+    crawler._scripts = AsyncMock(return_value=[search_source(1, more=False)])
+    login = AsyncMock()
+    monkeypatch.setattr(auth_module, "login_in_context", login)
+    assert len(await crawler.search("travel", 1, "recent")) == 1
+    login.assert_awaited_once()
+    crawler.on_session.assert_awaited_once()
+    assert not await crawler._reauthenticate(page)
 
 
 def test_search_timeout_accepts_only_unlimited_or_supported_positive_values() -> None:
@@ -526,6 +607,36 @@ async def test_cross_session_deduplication_is_optional(deduplicate: bool, expect
         AsyncMock(), AsyncMock(return_value=False), crawler=crawler, existing_post_ids={"one"},
     )
     assert len(result.posts) == expected
+
+
+@pytest.mark.asyncio
+async def test_default_keeps_previous_posts_but_merges_duplicates_within_run() -> None:
+    crawler = SimpleNamespace(search=AsyncMock(side_effect=[[post()], [post()]]))
+    result = await ThreadsPipeline(config()).run(
+        request(keywords=["first", "second"], include_comments=False,
+                min_delay_seconds=0, max_delay_seconds=0),
+        AsyncMock(), AsyncMock(return_value=False), crawler=crawler, existing_post_ids={"one"},
+    )
+    assert request().check_duplicate is False
+    assert len(result.posts) == 1
+    assert result.posts[0].search_keywords == ["first", "second"]
+    assert result.duplicate_count == 1
+
+
+@pytest.mark.asyncio
+async def test_search_explores_more_results_to_replace_previous_session_duplicates() -> None:
+    crawler = SimpleNamespace(search=AsyncMock(return_value=[post(str(i)) for i in range(40)]))
+    result = await ThreadsPipeline(config(min_delay_seconds=0, max_delay_seconds=0)).run(
+        request(keywords=["travel"], include_comments=False, check_duplicate=True, max_posts_per_keyword=10,
+                min_delay_seconds=0, max_delay_seconds=0),
+        AsyncMock(), AsyncMock(return_value=False), crawler=crawler,
+        existing_post_ids={str(i) for i in range(21)},
+    )
+    assert len(result.posts) == 10
+    assert result.duplicate_count == 21
+    assert result.search_attempts[0]["previous_session_duplicates"] == 21
+    assert result.search_attempts[0]["new_posts"] == 10
+    assert crawler.search.await_args.args[1] == 40
 
 
 @pytest.mark.asyncio
@@ -908,6 +1019,44 @@ async def test_browser_execution_forwards_progress_and_cleans_up_on_cancel(
 
 
 @pytest.mark.asyncio
+async def test_browser_session_refresh_is_saved_on_database_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    caller_thread = threading.get_ident()
+    recorded = AsyncMock()
+    state = {"cookies": [{"name": "sessionid", "value": "fixture", "domain": ".threads.com"}]}
+
+    @asynccontextmanager
+    async def session_factory():
+        yield object()
+
+    class FakeRepository:
+        def __init__(self, _session: object) -> None:
+            pass
+
+        async def save_account_session(self, account_id: str, data: dict[str, object]) -> None:
+            assert threading.get_ident() == caller_thread
+            await recorded(account_id, data)
+
+    class FakeTool:
+        name = "threads"
+
+        def __init__(self, *_args: object, on_session, **_kwargs: object) -> None:
+            self.on_session = on_session
+
+        async def run(self, _payload: dict[str, object]) -> dict[str, object]:
+            await self.on_session("one", state)
+            return {"ok": True}
+
+    monkeypatch.setattr(worker_module, "ThreadsTool", FakeTool)
+    monkeypatch.setattr(worker_module, "ThreadsRepository", FakeRepository)
+    monkeypatch.setattr(worker_module, "async_session_factory", session_factory)
+    result = await worker_module.ThreadsWorker(config())._execute_tool(
+        {}, AsyncMock(), AsyncMock(return_value=False),
+    )
+    assert result == {"ok": True}
+    recorded.assert_awaited_once_with("one", state)
+
+
+@pytest.mark.asyncio
 async def test_public_sessions_are_readable_but_only_owner_and_admin_can_manage(
     repository: ThreadsRepository,
 ) -> None:
@@ -999,6 +1148,58 @@ def fake_store() -> SimpleNamespace:
 
 
 @pytest.mark.asyncio
+async def test_legacy_cloudinary_deletion_uses_authenticated_destroy() -> None:
+    config = CloudinaryConfig(_env_file=None, cloud_name="fixture", api_key="fixture", api_secret="secret")
+    def handle(req: httpx.Request) -> httpx.Response:
+        assert req.url.path.endswith("/raw/destroy")
+        assert b"secret" not in req.content
+        return httpx.Response(200, json={"result": "ok"})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        await CloudinaryTextStore(config, client).delete("legacy.txt")
+
+
+@pytest.mark.asyncio
+async def test_deletion_cleans_both_existing_cloud_assets(repository: ThreadsRepository) -> None:
+    owner = user()
+    run = await repository.create(owner, request(), None)
+    await repository.claim_next("worker")
+    await repository.finish(run.id, result=ThreadsResult(query="travel", keywords=[], posts=[], duration_seconds=1).model_dump(mode="json"))
+    stored = await repository.get(run.id, owner)
+    stored.threads_result.archive_public_id = "old.txt"
+    stored.threads_result.legacy_archive_public_id = "old.md"
+    await repository.session.commit()
+    await repository.request_delete(run.id, owner)
+    store = fake_store()
+    assert await ThreadsArtifacts(repository, store).run_once()
+    assert {call.args[0] for call in store.delete.await_args_list} == {"old.txt", "old.md"}
+
+
+@pytest.mark.asyncio
+async def test_legacy_cleanup_failure_keeps_session_for_retry(repository: ThreadsRepository) -> None:
+    owner = user()
+    run = await repository.create(owner, request(), None)
+    await repository.claim_next("worker")
+    await repository.finish(run.id, result=ThreadsResult(query="travel", keywords=[], posts=[], duration_seconds=1).model_dump(mode="json"))
+    stored = await repository.get(run.id, owner)
+    stored.threads_result.archive_public_id = "old.txt"
+    await repository.session.commit()
+    await repository.request_delete(run.id, owner)
+    store = fake_store()
+    store.delete.side_effect = ThreadsError("CLOUDINARY_DELETE_FAILED", "Retry cleanup", 502)
+    cleanup = ThreadsArtifacts(repository, store)
+    assert await cleanup.run_once()
+    saved = await repository.get(run.id, owner)
+    assert saved.threads_result.deletion_requested
+    assert saved.threads_result.storage_error == "CLOUDINARY_DELETE_FAILED"
+    assert not await cleanup.run_once()
+    await repository.request_delete(run.id, owner)
+    store.delete.side_effect = None
+    assert await cleanup.run_once()
+    with pytest.raises(ThreadsError):
+        await repository.get(run.id, owner)
+
+
+@pytest.mark.asyncio
 async def test_disabled_archive_skips_upload_but_processes_deletion(
     repository: ThreadsRepository,
 ) -> None:
@@ -1008,7 +1209,7 @@ async def test_disabled_archive_skips_upload_but_processes_deletion(
     result = ThreadsResult(query="travel", keywords=["travel"], posts=[post()], duration_seconds=1)
     await repository.finish(run.id, result=result.model_dump(mode="json"))
     store = fake_store()
-    artifacts = ThreadsArtifacts(repository, store, archive_enabled=False)
+    artifacts = ThreadsArtifacts(repository, store)
     assert not await artifacts.run_once()
     store.upload.assert_not_awaited()
     await repository.request_delete(run.id, owner)
@@ -1043,72 +1244,16 @@ async def test_disabled_archive_retains_tombstone_when_existing_cloud_file_canno
     await repository.claim_next("worker")
     result = ThreadsResult(query="travel", keywords=[], posts=[], duration_seconds=1)
     await repository.finish(run.id, result=result.model_dump(mode="json"))
-    await repository.prepare_archive(run.id)
+    stored = await repository.get(run.id, owner)
+    stored.threads_result.archive_public_id = "legacy.txt"
+    await repository.session.commit()
     await repository.request_delete(run.id, owner)
     store = fake_store()
     store.available = False
-    assert await ThreadsArtifacts(repository, store, archive_enabled=False).run_once()
+    assert await ThreadsArtifacts(repository, store).run_once()
     saved = await repository.get(run.id, owner)
     assert saved.threads_result.deletion_requested
     assert saved.threads_result.storage_error == "CLOUDINARY_NOT_CONFIGURED"
-
-
-@pytest.mark.asyncio
-async def test_archive_failure_keeps_cloud_id_and_cleanup_retries_before_hard_deletion(
-    repository: ThreadsRepository,
-) -> None:
-    owner, reader = user(), user()
-    run = await repository.create(owner, request(), None)
-    await repository.claim_next("worker")
-    result = ThreadsResult(query="travel", keywords=["travel"], posts=[post()], duration_seconds=1)
-    result.posts[0].comments = [ThreadsComment(id="c1", username="reader", text="Saved")]
-    result.total_comments = 1
-    await repository.finish(run.id, result=result.model_dump(mode="json"))
-    store = fake_store()
-    store.upload.side_effect = ThreadsError("CLOUDINARY_UPLOAD_FAILED", "Unknown upload outcome")
-    artifacts = ThreadsArtifacts(repository, store)
-    assert await artifacts.run_once()
-    failed = await repository.get(run.id, owner)
-    assert failed.threads_result.archive_public_id == archive_public_id(run.id)
-    assert failed.threads_result.next_storage_attempt_at is not None
-    assert to_response(failed).result.posts[0].comments[0].id == "c1"
-
-    await repository.request_delete(run.id, owner)
-    with pytest.raises(ThreadsError):
-        await repository.get(run.id, reader)
-    store.delete.side_effect = ThreadsError("CLOUDINARY_DELETE_FAILED", "Try again")
-    assert await artifacts.run_once()
-    assert (await repository.get(run.id, owner)).threads_result.deletion_requested
-    assert not await artifacts.run_once()
-    await repository.request_delete(run.id, owner)
-    store.delete.side_effect = None
-    assert await artifacts.run_once()
-    store.delete.assert_awaited_with(archive_public_id(run.id))
-    for model in (ToolRun, ThreadsResultRecord, ThreadsPostRecord, ThreadsCommentRecord):
-        assert await repository.session.scalar(select(func.count()).select_from(model)) == 0
-
-
-@pytest.mark.asyncio
-async def test_cloud_archive_is_one_file_and_visibility_change_reuses_the_asset(
-    repository: ThreadsRepository,
-) -> None:
-    owner = user()
-    run = await repository.create(owner, request(), None)
-    await repository.claim_next("worker")
-    result = ThreadsResult(query="travel", keywords=["travel"], posts=[post()], duration_seconds=1)
-    await repository.finish(run.id, result=result.model_dump(mode="json"))
-    store = fake_store()
-    artifacts = ThreadsArtifacts(repository, store)
-    assert await artifacts.run_once()
-    assert (await repository.get(run.id, owner)).threads_result.archive_status == "ready"
-    first_id, content = store.upload.await_args.args
-    assert first_id.endswith(f"{run.id}.txt")
-    assert str(run.id) in content and "Useful travel tips" in content
-    assert not await artifacts.run_once()
-    await repository.update_visibility(run.id, owner, "private")
-    assert await artifacts.run_once()
-    assert store.upload.await_args.args[0] == first_id
-    assert '"visibility": "private"' in store.upload.await_args.args[1]
 
 
 @pytest.mark.asyncio
@@ -1123,7 +1268,7 @@ async def test_unconfigured_cloud_does_not_block_local_download_or_deleting_unup
     store = fake_store()
     store.available = False
     artifacts = ThreadsArtifacts(repository, store)
-    assert await artifacts.run_once()
+    assert not await artifacts.run_once()
     assert (await repository.get(run.id, owner)).threads_result.archive_public_id is None
     exported = await ThreadsService(repository, config()).export(run.id, owner)
     assert "Useful travel tips" in render_text(exported)
@@ -1155,61 +1300,6 @@ async def test_deleting_active_session_waits_for_worker_and_rejects_further_snap
     assert await artifacts.run_once()
     with pytest.raises(ThreadsError):
         await repository.get(run.id, owner)
-
-
-@pytest.mark.asyncio
-async def test_cloudinary_uploads_authenticated_raw_text_and_uses_signed_deletion() -> None:
-    import hashlib
-    from urllib.parse import parse_qs
-
-    config = CloudinaryConfig(
-        _env_file=None, cloud_name="fixture", api_key="fixture-key", api_secret="fixture-secret"
-    )
-    public_id = archive_public_id(uuid4())
-    received: list[httpx.Request] = []
-
-    def handle(request: httpx.Request) -> httpx.Response:
-        received.append(request)
-        body = request.content.decode()
-        assert "fixture-secret" not in body
-        if request.url.path.endswith("upload"):
-            assert 'name="type"\r\n\r\nauthenticated' in body
-            assert 'name="overwrite"\r\n\r\ntrue' in body
-            assert 'name="backup"\r\n\r\nfalse' in body
-            assert "THREADS SESSION" in body
-            assert "text/plain; charset=utf-8" in body
-            return httpx.Response(
-                200, json={"public_id": public_id, "resource_type": "raw", "type": "authenticated"}
-            )
-        data = {key: values[0] for key, values in parse_qs(body).items()}
-        signature = data.pop("signature")
-        assert data.pop("api_key") == "fixture-key"
-        message = "&".join(f"{key}={value}" for key, value in sorted(data.items()))
-        assert signature == hashlib.sha256((message + "fixture-secret").encode()).hexdigest()
-        assert data["type"] == "authenticated" and data["invalidate"] == "true"
-        return httpx.Response(200, json={"result": "not found"})
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
-        store = CloudinaryTextStore(config, client)
-        await store.upload(public_id, "THREADS SESSION")
-        await store.delete(public_id)
-    assert received[0].url.path == "/v1_1/fixture/raw/upload"
-    assert received[1].url.path == "/v1_1/fixture/raw/destroy"
-
-
-@pytest.mark.asyncio
-async def test_cloudinary_rejects_invalid_provider_responses_without_exposing_secrets() -> None:
-    config = CloudinaryConfig(
-        _env_file=None, cloud_name="fixture", api_key="fixture-key", api_secret="fixture-secret"
-    )
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda _: httpx.Response(500, text="fixture-secret"))
-    ) as client:
-        store = CloudinaryTextStore(config, client)
-        for operation in (store.upload("fixture.txt", "text"), store.delete("fixture.txt")):
-            with pytest.raises(ThreadsError) as error:
-                await operation
-            assert "fixture-secret" not in str(error.value)
 
 
 @pytest.mark.asyncio
@@ -1330,36 +1420,6 @@ async def test_text_export_orders_nested_replies_and_retains_missing_parents_and
     assert document.count('"id": "cycle-b"') == 1
     assert "  | END POST 1" in document
     assert document.endswith("END SESSION\n")
-
-
-@pytest.mark.asyncio
-async def test_replacing_legacy_markdown_keeps_both_cloud_ids_until_cleanup_succeeds(
-    repository: ThreadsRepository,
-) -> None:
-    owner = user()
-    run = await repository.create(owner, request(), None)
-    await repository.claim_next("worker")
-    result = ThreadsResult(query="travel", keywords=[], posts=[post()], duration_seconds=1)
-    await repository.finish(run.id, result=result.model_dump(mode="json"))
-    stored = await repository.get(run.id, owner)
-    legacy_id = f"cyverse/threads/{run.id}.md"
-    stored.threads_result.archive_public_id = legacy_id
-    await repository.session.commit()
-    store = fake_store()
-    store.delete.side_effect = ThreadsError("CLOUDINARY_DELETE_FAILED", "Try again")
-    artifacts = ThreadsArtifacts(repository, store)
-    assert await artifacts.run_once()
-    stored = await repository.get(run.id, owner)
-    assert stored.threads_result.archive_status == "failed"
-    assert stored.threads_result.archive_public_id.endswith(".txt")
-    assert stored.threads_result.legacy_archive_public_id == legacy_id
-    await repository.request_delete(run.id, owner)
-    store.delete.side_effect = None
-    assert await artifacts.run_once()
-    deleted = [call.args[0] for call in store.delete.await_args_list]
-    assert archive_public_id(run.id) in deleted and legacy_id in deleted
-    with pytest.raises(ThreadsError):
-        await repository.get(run.id, owner)
 
 
 @pytest.mark.asyncio

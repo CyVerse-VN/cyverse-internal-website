@@ -4,7 +4,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Protocol
@@ -31,6 +31,7 @@ ALLOWED_DOMAINS = ("threads.com", "threads.net", "instagram.com", "cdninstagram.
 MAX_PAYLOAD_BYTES = 5_000_000
 MAX_CAPTURED_BYTES = 8_000_000
 SearchWarning = Callable[[str], None]
+SessionCallback = Callable[[str, dict[str, object]], Awaitable[None]]
 logger = logging.getLogger(__name__)
 
 # A search feed can scroll inside a container rather than the document itself.
@@ -116,10 +117,41 @@ class ThreadsCrawler(Protocol):
 
 
 class PlaywrightThreadsCrawler:
-    def __init__(self, pages: list[Page], *, search_timeout_seconds: int = 120) -> None:
+    def __init__(self, pages: list[Page], *, search_timeout_seconds: int = 120,
+                 accounts: dict[Page, ThreadsAccount] | None = None,
+                 config: ThreadsConfig | None = None,
+                 on_session: SessionCallback | None = None) -> None:
         self.pages = pages
         self.index = 0
         self.search_timeout_seconds = search_timeout_seconds
+        self.accounts = accounts or {}
+        self.config = config
+        self.on_session = on_session
+        self.reauth_attempted: set[Page] = set()
+        self.keyword: str | None = None
+        self.keyword_page: Page | None = None
+
+    async def _reauthenticate(self, page: Page) -> bool:
+        account = self.accounts.get(page)
+        if page in self.reauth_attempted or not account or not self.config:
+            return False
+        if not account.username or not account.password:
+            return False
+        self.reauth_attempted.add(page)
+        from app.tools.threads.auth import login_in_context
+
+        try:
+            await page.context.clear_cookies()
+            await login_in_context(page, page.context, account, self.config.session_path(account),
+                                   timeout_seconds=45)
+        except (ThreadsError, PlaywrightError, OSError):
+            logger.warning("Threads account reauthentication failed; manual login may be required")
+            return False
+        if self.on_session is not None:
+            state = await page.context.storage_state()
+            await self.on_session(account.id, state)
+        logger.info("Threads account session refreshed")
+        return True
 
     def _page(self) -> Page:
         if not self.pages:
@@ -219,7 +251,11 @@ class PlaywrightThreadsCrawler:
         on_warning: SearchWarning | None = None,
     ) -> list[ThreadsPost]:
         while self.pages:
-            page = self._page()
+            if self.keyword != keyword or self.keyword_page not in self.pages:
+                self.keyword = keyword
+                self.keyword_page = self._page()
+            page = self.keyword_page
+            assert page is not None
             url = f"https://www.threads.com/search/?q={quote(keyword, safe='')}"
             if search_type == "recent":
                 url += "&filter=latest"
@@ -310,6 +346,8 @@ class PlaywrightThreadsCrawler:
                     )
                 return selected
             except ThreadsError as exc:
+                if exc.code == "THREADS_REAUTH_REQUIRED" and await self._reauthenticate(page):
+                    continue
                 if exc.code == "THREADS_REAUTH_REQUIRED" and len(self.pages) > 1:
                     logger.warning(
                         "Threads session redirected to login/challenge on %s; skipping this account (%d remaining)",
@@ -411,6 +449,8 @@ class PlaywrightThreadsCrawler:
                 logger.debug("Extracted %d comments from %s", len(results), url)
                 return results
             except ThreadsError as exc:
+                if exc.code == "THREADS_REAUTH_REQUIRED" and await self._reauthenticate(page):
+                    continue
                 if exc.code == "THREADS_REAUTH_REQUIRED" and len(self.pages) > 1:
                     logger.warning(
                         "Threads session redirected to login/challenge during comments on %s; skipping this account (%d remaining)",
@@ -430,6 +470,7 @@ async def open_crawler(
     max_accounts: int = -1,
     use_proxy: bool = True,
     search_timeout_seconds: int | None = None,
+    on_session: SessionCallback | None = None,
 ) -> AsyncIterator[ThreadsCrawler]:
     accounts = [account for account in config.accounts if account.enabled]
     if not accounts and not config.anonymous:
@@ -442,7 +483,7 @@ async def open_crawler(
     for account in accounts:
         session_file = config.session_path(account)
         has_session, is_expired, _ = inspect_session_file(session_file)
-        if has_session and not is_expired:
+        if (has_session and not is_expired) or (account.username and account.password):
             valid_accounts.append(account)
         elif has_session and is_expired:
             logger.warning(
@@ -474,14 +515,22 @@ async def open_crawler(
             browser = await playwright.chromium.launch(headless=True)
             contexts: list[BrowserContext] = []
             try:
+                pages: list[Page] = []
+                page_accounts: dict[Page, ThreadsAccount] = {}
+                needs_login: list[Page] = []
                 for account in use_accounts or [None]:
                     proxy_cfg = (
                         playwright_proxy(account.proxy.get_secret_value())
                         if account and account.proxy and use_proxy
                         else None
                     )
+                    has_session, is_expired, _ = (
+                        inspect_session_file(config.session_path(account))
+                        if account else (False, False, None)
+                    )
+                    ready = has_session and not is_expired
                     context = await browser.new_context(
-                        storage_state=str(config.session_path(account)) if account else None,
+                        storage_state=str(config.session_path(account)) if ready and account else None,
                         proxy=proxy_cfg,
                         locale="en-US",
                         viewport={"width": 1280, "height": 900},
@@ -489,15 +538,28 @@ async def open_crawler(
                     )
                     contexts.append(context)
                     await context.route("**/*", guard_request)
-                pages = [await context.new_page() for context in contexts]
-                yield PlaywrightThreadsCrawler(
+                    page = await context.new_page()
+                    pages.append(page)
+                    if account:
+                        page_accounts[page] = account
+                        if not ready:
+                            needs_login.append(page)
+                crawler = PlaywrightThreadsCrawler(
                     pages,
+                    accounts=page_accounts, config=config, on_session=on_session,
                     search_timeout_seconds=(
                         search_timeout_seconds
                         if search_timeout_seconds is not None
                         else config.search_timeout_seconds
                     ),
                 )
+                for page in needs_login:
+                    if not await crawler._reauthenticate(page):
+                        crawler.pages.remove(page)
+                        await page.context.close()
+                if not crawler.pages:
+                    raise ThreadsError("THREADS_REAUTH_REQUIRED", "Threads login requires manual attention.", 503)
+                yield crawler
             finally:
                 await browser.close()
     except (PlaywrightError, OSError, ValueError) as exc:

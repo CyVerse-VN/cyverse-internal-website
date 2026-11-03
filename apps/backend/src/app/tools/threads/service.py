@@ -228,7 +228,7 @@ class ThreadsService:
         active_count = 0
         for account in accounts:
             has_session, is_expired, _ = inspect_session_file(self.config.session_path(account))
-            if has_session and not is_expired:
+            if (has_session and not is_expired) or (account.username and account.password):
                 active_count += 1
         ready = (active_count > 0) or self.config.anonymous
         return ThreadsConfigResponse(
@@ -238,7 +238,6 @@ class ThreadsService:
                 settings.groq_api_key and settings.groq_api_key.get_secret_value().strip()
             ),
             cloudinary_ready=cloudinary_config.ready,
-            txt_archive_enabled=self.config.txt_archive_enabled,
             defaults=ThreadsParameters(),
             limits={
                 "keywords": 20,
@@ -274,8 +273,9 @@ class ThreadsService:
         active_accounts = [
             account
             for account in accounts
-            if inspect_session_file(self.config.session_path(account))[0]
-            and not inspect_session_file(self.config.session_path(account))[1]
+            if (inspect_session_file(self.config.session_path(account))[0]
+            and not inspect_session_file(self.config.session_path(account))[1])
+            or (account.username and account.password)
         ]
         if not active_accounts and not self.config.anonymous:
             raise ThreadsError(

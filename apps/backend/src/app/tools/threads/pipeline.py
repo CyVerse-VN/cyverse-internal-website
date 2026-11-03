@@ -9,7 +9,7 @@ from playwright.async_api import Error as PlaywrightError
 
 from app.tools.threads.ai import GroqThreadsAI, ThreadsAI
 from app.tools.threads.config import ThreadsConfig
-from app.tools.threads.crawler import ThreadsCrawler, open_crawler
+from app.tools.threads.crawler import SessionCallback, ThreadsCrawler, open_crawler
 from app.tools.threads.errors import ThreadsCancelled, ThreadsError
 from app.tools.threads.schemas import ThreadsPost, ThreadsRequest, ThreadsResult
 
@@ -34,6 +34,7 @@ class ThreadsPipeline:
         ai: ThreadsAI | None = None,
         on_snapshot: SnapshotCallback | None = None,
         existing_post_ids: set[str] | None = None,
+        on_session: SessionCallback | None = None,
     ) -> ThreadsResult:
         async with httpx.AsyncClient(follow_redirects=False) as client:
             provider = ai or GroqThreadsAI(self.config, client)
@@ -46,6 +47,7 @@ class ThreadsPipeline:
                 max_accounts=request.max_accounts,
                 use_proxy=request.use_proxy,
                 search_timeout_seconds=request.search_timeout_seconds,
+                on_session=on_session,
             ) as browser:
                 return await self._execute(
                     request, browser, provider, on_progress, is_cancelled, on_snapshot, existing_post_ids
@@ -146,12 +148,18 @@ class ThreadsPipeline:
                 logger.warning("Search warning for keyword %r: %s", kw, message)
 
             for s_type in search_types:
+                search_warnings: list[str] = []
+                search_limit = (
+                    min(100, request.max_posts_per_keyword * 4)
+                    if request.check_duplicate and existing_ids
+                    else request.max_posts_per_keyword
+                )
                 try:
                     batch = await crawler.search(
                         keyword,
-                        request.max_posts_per_keyword,
+                        search_limit,
                         s_type,
-                        on_warning=capture_warning,
+                        on_warning=search_warnings.append,
                     )
                     search_attempts.append({"keyword": keyword, "mode": s_type, "status": "completed", "posts": len(batch)})
                 except ThreadsCancelled:
@@ -163,13 +171,18 @@ class ThreadsPipeline:
                     warnings.append(warn_msg)
                     logger.warning("%s", warn_msg)
                     batch = []
+                previous_session_duplicates = 0
+                collection_duplicates = 0
+                new_posts = 0
                 for post in batch:
                     if request.check_duplicate and post.post_id in existing_ids:
                         duplicate_count += 1
+                        previous_session_duplicates += 1
                         continue
                     key = post.post_id if post.post_id in posts else urls.get(post.url, post.post_id)
                     if key in posts:
                         duplicate_count += 1
+                        collection_duplicates += 1
                         posts[key].search_keywords = list(
                             dict.fromkeys([*posts[key].search_keywords, keyword])
                         )
@@ -177,6 +190,24 @@ class ThreadsPipeline:
                         post.search_keywords = [keyword]
                         posts[key] = post
                         urls[post.url] = key
+                        new_posts += 1
+                        if new_posts >= request.max_posts_per_keyword:
+                            break
+                search_attempts[-1]["previous_session_duplicates"] = previous_session_duplicates
+                search_attempts[-1]["collection_duplicates"] = collection_duplicates
+                search_attempts[-1]["new_posts"] = new_posts
+                search_attempts[-1]["search_limit"] = search_limit
+                for warning in search_warnings:
+                    if search_limit > request.max_posts_per_keyword and warning.startswith("Collected "):
+                        if new_posts >= request.max_posts_per_keyword:
+                            continue
+                        warning = f"Search exploration: {warning}"
+                    capture_warning(warning)
+                if search_limit > request.max_posts_per_keyword and new_posts < request.max_posts_per_keyword:
+                    warnings.append(
+                        f"Keyword {index + 1} ({s_type}): added {new_posts} new posts after "
+                        f"checking up to {search_limit} results; duplicates or unavailable results may reduce the total."
+                    )
                 if len(search_types) > 1:
                     await pause()
             # Persist intermediate snapshot to database after every keyword finishes

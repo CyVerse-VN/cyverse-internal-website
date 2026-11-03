@@ -90,6 +90,10 @@ export function ThreadsResults({ run }: { run: ThreadsRun }) {
           <strong>{run.result.total_comments}</strong>
           <span>{t("threads.comments")}</span>
         </div>
+        {run.result.duplicate_count > 0 && <div>
+          <strong>{run.result.duplicate_count}</strong>
+          <span>Duplicate results skipped or merged</span>
+        </div>}
         {run.result.curated_post_ids.length > 0 && (
           <div>
             <strong>{run.result.curated_post_ids.length}</strong>

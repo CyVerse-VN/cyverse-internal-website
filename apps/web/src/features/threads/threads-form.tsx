@@ -7,6 +7,7 @@ import { AlertTriangle, ChevronDown, Clock3, KeyRound, Play, RotateCcw, Settings
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/i18n/context";
 import { ImportSessionModal } from "./import-session-modal";
+import { CrossSessionDedup } from "./cross-session-dedup";
 import type { ThreadsAccountItem, ThreadsConfig, ThreadsParameters } from "./types";
 import styles from "./threads.module.css";
 
@@ -165,6 +166,9 @@ export function ThreadsForm({
           <small className={styles.hint}>{t("threads.postsPerKeywordHint")}</small>
         </div>
       </section>
+
+      <CrossSessionDedup enabled={parameters.check_duplicate}
+        onChange={(check_duplicate) => onChange({ check_duplicate })} />
 
       {/* Comment Collection Section */}
       <section className={styles.formSection} aria-labelledby="threads-comments-label">

@@ -19,7 +19,6 @@ import {
   Square,
   Plus,
   X,
-  FileJson,
   CheckCircle2,
   AlertCircle,
   Download,
@@ -45,6 +44,8 @@ import {
 } from "./types";
 import { isActiveRun } from "./settings";
 import { ThreadsSessionControls } from "./threads-session-controls";
+import { JsonExportControl } from "./json-export-control";
+import { CrossSessionDedup } from "./cross-session-dedup";
 import { ThreadsResults } from "./threads-results";
 import styles from "./threads.module.css";
 
@@ -154,7 +155,7 @@ export function ThreadsTravelWorkspace({
     keywords: [],
     max_posts_per_keyword: 50,
     search_type: "both", // Default to both recent and top for comprehensive local search
-    check_duplicate: true,
+    check_duplicate: false,
     include_comments: true,
     max_comment_posts: -1,
     max_comments_per_post: 25,
@@ -670,12 +671,9 @@ export function ThreadsTravelWorkspace({
               </strong>{" "}
               (trên {groups.reduce((acc, g) => acc + g.keywords.length, 0)} từ khóa khả dụng)
             </span>
-            <label className={styles.toggle}>
-              <input type="checkbox" checked={parameters.check_duplicate}
-                onChange={(event) => updateParameters({ check_duplicate: event.target.checked })} />
-              <span>Exclude posts from my previous sessions</span>
-            </label>
           </div>
+          <CrossSessionDedup enabled={parameters.check_duplicate}
+            onChange={(check_duplicate) => updateParameters({ check_duplicate })} />
         </div>
 
         {/* Step 4: Full Scraper Configuration identical to Threads Scraper tab */}
@@ -1139,7 +1137,6 @@ export function ThreadsTravelWorkspace({
             <ThreadsSessionControls
               key={activeRun.id}
               run={activeRun}
-              archiveEnabled={config?.txt_archive_enabled ?? false}
               onUpdated={onRunUpdated}
             />
           )}
@@ -1223,14 +1220,7 @@ export function ThreadsTravelWorkspace({
             <div className={styles.exportBar}>
               <span>Xuất toàn bộ kết quả đã cào:</span>
               <div className={styles.exportButtons}>
-                <a
-                  href={`/api/threads/runs/${activeRun.id}/export?format=json`}
-                  download
-                  className={styles.exportActionBtn}
-                >
-                  <FileJson size={14} />
-                  <span>Tải JSON ({postCount} bài)</span>
-                </a>
+                <JsonExportControl runId={activeRun.id} />
                 <a
                   href={`/api/threads/runs/${activeRun.id}/export?format=txt`}
                   download

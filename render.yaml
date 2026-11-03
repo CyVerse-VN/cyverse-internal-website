@@ -53,7 +53,7 @@ services:
       - key: RESEARCH_OPENALEX_API_KEY
         sync: false
 
-      # Backend-only Threads TXT storage credentials.
+      # Optional backend-only credentials for deleting legacy Threads archives.
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
@@ -66,8 +66,6 @@ services:
         value: "true"
       - key: THREADS_EMBEDDED_WORKER
         value: "true"
-      - key: THREADS_TXT_ARCHIVE_ENABLED
-        value: "false"
       - key: THREADS_ANONYMOUS
         value: "true"
       - key: THREADS_ACCOUNTS

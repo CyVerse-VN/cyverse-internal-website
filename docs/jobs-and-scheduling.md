@@ -4,7 +4,7 @@ Threads Scraper dùng queue `tool_runs` hiện có, consumer riêng có advisory
 timeout. Consumer chạy trong API lifespan hoặc `python -m app.workers.threads` khi tắt
 `THREADS_EMBEDDED_WORKER`. Job queued giữ nguyên khi restart; job running bị gián đoạn
 chuyển failed để người dùng chủ động chạy lại; checkpoints bài/bình luận đã lưu vẫn còn.
-Đóng frontend không hủy job. Consumer còn xử lý TXT archive/cleanup bền vững trong
+Đóng frontend không hủy job. Consumer còn xử lý cleanup asset cũ bền vững trong
 database, retry cloud lỗi bằng exponential backoff. Delete active job yêu cầu cancel trước,
 xóa Cloudinary trước khi hard-delete database. Xem [Threads tool](tools/threads.md).
 

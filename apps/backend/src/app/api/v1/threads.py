@@ -10,6 +10,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.permissions import require_admin
 from app.db.session import get_db_session
 from app.models.user import User
+from app.tools.threads.json_export import JsonDetail, render_json
 from app.tools.threads.repository import ThreadsRepository
 from app.tools.threads.schemas import (
     ThreadsConfigResponse,
@@ -211,19 +212,21 @@ async def export_threads_run(
     user: Annotated[User, Depends(get_current_user)],
     service: Annotated[ThreadsService, Depends(get_threads_service)],
     format: Literal["json", "txt"] = "json",
+    detail: JsonDetail = "basic",
 ) -> Response:
     run = await service.export(run_id, user)
     assert run.result is not None
     if format == "json":
-        content = run.model_dump_json(indent=2)
+        content = render_json(run, detail)
         media_type = "application/json"
     else:
         content, media_type = render_text(run), "text/plain; charset=utf-8"
+    filename = f"threads-{run_id}-{detail}.json" if format == "json" else f"threads-{run_id}.txt"
     return Response(
         content=content,
         media_type=media_type,
         headers={
-            "Content-Disposition": f'attachment; filename="threads-{run_id}.{format}"',
+            "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
         },

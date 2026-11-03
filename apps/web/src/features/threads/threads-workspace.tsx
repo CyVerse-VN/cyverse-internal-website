@@ -14,6 +14,7 @@ import { ThreadsForm } from "./threads-form";
 import { ThreadsResults } from "./threads-results";
 import { ThreadsHistory } from "./threads-history";
 import { ThreadsSessionControls } from "./threads-session-controls";
+import { JsonExportControl } from "./json-export-control";
 import { ThreadsTravelForm } from "./threads-travel-form";
 import { threadsConfigSchema, threadsParametersSchema, threadsRequestSchema, threadsRunSchema, type ThreadsConfig, type ThreadsParameters, type ThreadsRun } from "./types";
 import styles from "./threads.module.css";
@@ -113,7 +114,7 @@ export function ThreadsWorkspace() {
           setActiveTab("scraper");
         }
         setRun(item); setHistory((current) => mergeRun(current, item)); setDetailError(null);
-        if (isActiveRun(item.status) || item.deletion_requested || (config?.txt_archive_enabled && item.archive_status !== "ready")) {
+        if (isActiveRun(item.status) || item.deletion_requested) {
           timer = setTimeout(poll, isActiveRun(item.status) || item.deletion_requested ? 2000 : 10000);
         }
       } catch (failure) {
@@ -131,7 +132,7 @@ export function ThreadsWorkspace() {
     }
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [selectedId, detailRevision, config?.txt_archive_enabled]);
+  }, [selectedId, detailRevision]);
 
   const hasRunningSession = useMemo(
     () => history.some((item) => item.status === "running"),
@@ -390,12 +391,6 @@ export function ThreadsWorkspace() {
             {settingsNotice}
           </p>
         )}
-        {config && config.txt_archive_enabled && !config.cloudinary_ready && (
-          <p className={styles.notice}>
-            Cloudinary is not configured. Collections are saved in the database and TXT downloads
-            are available. Cloud archiving will retry after configuration.
-          </p>
-        )}
         <div className={styles.layout} data-history-collapsed={panels.history_collapsed}>
           <ThreadsHistory
             items={tabHistory}
@@ -473,7 +468,7 @@ export function ThreadsWorkspace() {
                           mode: "travel",
                           search_type: "both",
                           expand_query: false,
-                          check_duplicate: true,
+                          check_duplicate: false,
                         });
                         setFormError(null);
                       }}
@@ -602,7 +597,7 @@ export function ThreadsWorkspace() {
                         </p>
                       </div>
                     </div>
-                    <ThreadsSessionControls key={run.id} run={run} onUpdated={updateRun} archiveEnabled={config?.txt_archive_enabled ?? false} />
+                    <ThreadsSessionControls key={run.id} run={run} onUpdated={updateRun} />
                     {run.status === "queued" && (
                       <div className={styles.queuePanel} role="status" aria-live="polite">
                         <div className={styles.queuePanelHeader}>
@@ -736,14 +731,7 @@ export function ThreadsWorkspace() {
                               {language === "vi" ? "bài viết" : "posts"})
                             </h3>
                             <div className={styles.exportButtons}>
-                              <a
-                                href={`/api/threads/runs/${run.id}/export?format=json`}
-                                download
-                                className={styles.exportActionBtn}
-                              >
-                                <ArrowDownToLine size={14} />
-                                {t("threads.exportJson")}
-                              </a>
+                              <JsonExportControl runId={run.id} />
                               <a
                                 href={`/api/threads/runs/${run.id}/export?format=txt`}
                                 download

@@ -1,10 +1,9 @@
-"""Server-only adapter for authenticated raw text archives."""
+"""Server-only cleanup for previously stored authenticated archives."""
 
 import hashlib
 import logging
 import time
 from typing import Literal, Protocol
-from uuid import UUID
 
 import httpx
 from pydantic import BaseModel, Field, SecretStr, ValidationError
@@ -38,12 +37,6 @@ class CloudinaryConfig(BaseSettings):
         )
 
 
-class UploadResponse(BaseModel):
-    public_id: str
-    resource_type: Literal["raw"]
-    type: Literal["authenticated"]
-
-
 class DestroyResponse(BaseModel):
     result: Literal["ok", "not found"]
 
@@ -51,12 +44,7 @@ class DestroyResponse(BaseModel):
 class TextStore(Protocol):
     @property
     def available(self) -> bool: ...
-    async def upload(self, public_id: str, content: str) -> None: ...
     async def delete(self, public_id: str) -> None: ...
-
-
-def archive_public_id(run_id: UUID) -> str:
-    return f"cyverse/threads/{run_id}.txt"
 
 
 class CloudinaryTextStore:
@@ -68,7 +56,7 @@ class CloudinaryTextStore:
     def available(self) -> bool:
         return self.config.ready
 
-    def _parameters(self, public_id: str, *, upload: bool) -> dict[str, str]:
+    def _parameters(self, public_id: str) -> dict[str, str]:
         if not self.config.ready:
             raise ThreadsError("CLOUDINARY_NOT_CONFIGURED", "Configure Cloudinary storage.", 503)
         parameters = {
@@ -77,9 +65,6 @@ class CloudinaryTextStore:
             "invalidate": "true",
             "timestamp": str(int(time.time())),
         }
-        if upload:
-            parameters["overwrite"] = "true"
-            parameters["backup"] = "false"
         signing_input = "&".join(f"{key}={value}" for key, value in sorted(parameters.items()))
         parameters["signature"] = hashlib.sha256(
             (signing_input + self.config.api_secret.get_secret_value()).encode()
@@ -87,32 +72,8 @@ class CloudinaryTextStore:
         parameters["api_key"] = self.config.api_key.get_secret_value()
         return parameters
 
-    async def upload(self, public_id: str, content: str) -> None:
-        parameters = self._parameters(public_id, upload=True)
-        try:
-            response = await self.client.post(
-                f"https://api.cloudinary.com/v1_1/{self.config.cloud_name}/raw/upload",
-                data=parameters,
-                files={"file": ("session.txt", content.encode("utf-8"), "text/plain; charset=utf-8")},
-                timeout=60,
-            )
-            response.raise_for_status()
-            uploaded = UploadResponse.model_validate(response.json())
-            if uploaded.public_id != public_id:
-                raise ValueError("Unexpected artifact identifier")
-        except (httpx.HTTPError, ValueError, ValidationError) as exc:
-            logger.error(
-                "Cloudinary upload failed for %s: %s (%s)",
-                public_id,
-                type(exc).__name__,
-                exc,
-            )
-            raise ThreadsError(
-                "CLOUDINARY_UPLOAD_FAILED", "Text archive upload failed and will be retried.", 502
-            ) from exc
-
     async def delete(self, public_id: str) -> None:
-        parameters = self._parameters(public_id, upload=False)
+        parameters = self._parameters(public_id)
         try:
             response = await self.client.post(
                 f"https://api.cloudinary.com/v1_1/{self.config.cloud_name}/raw/destroy",

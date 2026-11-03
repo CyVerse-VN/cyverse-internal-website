@@ -10,7 +10,13 @@ from app.api.v1.threads import get_threads_service
 from app.auth.dependencies import get_current_user
 from app.main import create_app
 from app.tools.threads.errors import ThreadsError
-from app.tools.threads.schemas import ThreadsRequest, ThreadsResult, ThreadsRunResponse
+from app.tools.threads.schemas import (
+    ThreadsComment,
+    ThreadsPost,
+    ThreadsRequest,
+    ThreadsResult,
+    ThreadsRunResponse,
+)
 
 
 def test_all_threads_routes_require_authentication() -> None:
@@ -106,13 +112,27 @@ def test_safe_domain_errors_and_result_exports() -> None:
     assert denied.json() == {"code": "RUN_NOT_FOUND", "detail": "Threads run not found."}
     run.status, run.stage = "completed", "completed"
     run.result = ThreadsResult(
-        query="travel tips", keywords=["travel"], posts=[], duration_seconds=1
+        query="travel tips", keywords=["travel"], duration_seconds=1,
+        posts=[ThreadsPost(post_id="one", url="https://www.threads.com/@user/post/abc", username="user",
+                           text="Post text", source_data={"raw": "post"},
+                           comments=[ThreadsComment(id="c", username="reader", text="Comment text",
+                                                    source_data={"raw": "comment"})])],
     )
     exported = client.get(f"/api/v1/tools/threads/runs/{run.id}/export?format=json")
     assert exported.status_code == 200
-    assert exported.json()["result"]["keywords"] == ["travel"]
-    assert exported.json()["request"]["query"] == "travel tips"
-    assert exported.json()["id"] == str(run.id)
+    assert exported.json()["detail_level"] == "basic"
+    assert exported.json()["posts"][0]["text"] == "Post text"
+    assert exported.json()["posts"][0]["comments"][0]["text"] == "Comment text"
+    assert "source_data" not in exported.json()["posts"][0]
+    standard = client.get(f"/api/v1/tools/threads/runs/{run.id}/export?format=json&detail=standard").json()
+    assert standard["request"]["query"] == "travel tips"
+    assert standard["id"] == str(run.id)
+    assert "source_data" not in standard["result"]["posts"][0]
+    assert "source_data" not in standard["result"]["posts"][0]["comments"][0]
+    full = client.get(f"/api/v1/tools/threads/runs/{run.id}/export?format=json&detail=full").json()
+    assert full["result"]["posts"][0]["source_data"] == {"raw": "post"}
+    assert full["result"]["posts"][0]["comments"][0]["source_data"] == {"raw": "comment"}
+    assert client.get(f"/api/v1/tools/threads/runs/{run.id}/export?detail=invalid").status_code == 422
     assert "attachment" in exported.headers["content-disposition"]
     text = client.get(f"/api/v1/tools/threads/runs/{run.id}/export?format=txt")
     assert text.status_code == 200

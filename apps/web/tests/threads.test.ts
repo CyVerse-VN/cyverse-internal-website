@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_THREADS_PARAMETERS, filterThreadsPosts, loadThreadsSettings, parseKeywords, safeThreadsUrl, saveThreadsSettings } from "../src/features/threads/settings";
+import { DEFAULT_THREADS_PARAMETERS, THREADS_SETTINGS_KEY, filterThreadsPosts, loadThreadsSettings, parseKeywords, safeThreadsUrl, saveThreadsSettings } from "../src/features/threads/settings";
 import { threadsPostSchema, threadsRequestSchema } from "../src/features/threads/types";
 
 describe("Threads parameters", () => {
@@ -35,6 +35,22 @@ describe("Threads parameters", () => {
     expect(loadThreadsSettings(storage)).toBeNull();
     value = "invalid JSON";
     expect(loadThreadsSettings(storage)).toBeNull();
+  });
+
+  it("defaults to retaining previous-session posts and migrates old preferences safely", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+    };
+    expect(DEFAULT_THREADS_PARAMETERS.check_duplicate).toBe(false);
+    values.set("cyverse.threads.settings.v1", JSON.stringify({
+      ...DEFAULT_THREADS_PARAMETERS, check_duplicate: true, max_posts_per_keyword: 50,
+    }));
+    expect(loadThreadsSettings(storage)).toMatchObject({ check_duplicate: false, max_posts_per_keyword: 50 });
+    expect(saveThreadsSettings(storage, { ...DEFAULT_THREADS_PARAMETERS, check_duplicate: true })).toBe(true);
+    expect(values.has(THREADS_SETTINGS_KEY)).toBe(true);
+    expect(loadThreadsSettings(storage)?.check_duplicate).toBe(true);
   });
 
   it("filters post text, authors, and AI summaries without losing the source data", () => {

@@ -2,8 +2,8 @@
 
 ## Render Free: bộ nhớ và kết nối Threads
 
-`THREADS_TXT_ARCHIVE_ENABLED=false` tắt upload TXT tự động; khi cần bật lại, cấu hình
-biến thành `true` và restart backend. Các TXT đã upload không tự bị xóa.
+Không upload TXT mới lên Cloudinary. Các asset cũ không tự bị xóa; cleanup khi xóa session
+cần credentials Cloudinary tương ứng.
 
 Trong Threads, chọn số tài khoản ở **Advanced settings** cho từng lượt chạy, cả trên
 Render lẫn local. Chọn 1 tài khoản trên Render Free để giảm sử dụng RAM; chọn nhiều hơn
@@ -27,11 +27,8 @@ Tài liệu hướng dẫn triển khai toàn diện hệ sinh thái CyVerse Int
 - **Backend (`apps/backend`)**: Triển khai trên **Render** (FastAPI, Python 3.13, Uvicorn, uv).
 - **Database**: PostgreSQL-compatible TiDB Cloud, database `cyverse_internal`.
 
-Threads TXT archives dùng Cloudinary qua ba secret backend-only:
-`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`. Blueprint có sẵn
-biến để điền. Sau khi cấu hình, restart backend/worker để hàng đợi archive retry. Cần
-áp dụng migration `20261102_0008` trước khi chạy code Threads mới. Backend/worker phải
-tiếp tục hoạt động để collection, archive và cleanup chạy khi người dùng đóng frontend;
+Các biến Cloudinary backend-only chỉ cần để cleanup asset cũ. Backend/worker phải
+tiếp tục hoạt động để collection và cleanup chạy khi người dùng đóng frontend;
 dịch vụ bị sleep hoặc dừng sẽ không tiếp tục xử lý trong thời gian đó.
 
 ---

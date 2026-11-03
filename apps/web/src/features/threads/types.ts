@@ -5,7 +5,7 @@ export const threadsParametersSchema = z.object({
   keywords: z.array(z.string().trim().min(1).max(100)).max(20),
   max_posts_per_keyword: z.number().int().min(1).max(100).default(25),
   search_type: z.enum(["top", "recent", "both"]),
-  check_duplicate: z.boolean().default(true),
+  check_duplicate: z.boolean().default(false),
   include_comments: z.boolean(),
   max_comment_posts: z.number().int().min(-1).max(500).default(-1),
   max_comments_per_post: z.number().int().min(-1).max(500),
@@ -72,7 +72,6 @@ export const threadsRunSchema = z.object({
 export const threadsConfigSchema = z.object({
   enabled: z.boolean(), accounts_ready: z.boolean(), ai_available: z.boolean(),
   cloudinary_ready: z.boolean(),
-  txt_archive_enabled: z.boolean().default(false),
   defaults: threadsParametersSchema, limits: z.record(z.string(), z.number()),
 });
 

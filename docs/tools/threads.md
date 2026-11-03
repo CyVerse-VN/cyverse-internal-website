@@ -1,6 +1,8 @@
 # Threads Scraper Tool
 
-JSON export phiên bản 2 chứa run ID, request, trạng thái, thời gian và `result`.
+JSON export có ba mức khi tải: `basic` (mặc định: bài và bình luận), `standard`
+(thêm metadata và thống kê), `full` (thêm source data). Mức xuất không thay đổi dữ
+liệu trong database. `standard` và `full` chứa run ID, request, trạng thái và `result`.
 `result.search_attempts` ghi kết quả từng keyword/mode; mọi lượt tìm kiếm lỗi sẽ làm job
 thất bại, thay vì hoàn thành với kết quả rỗng. Bài và bình luận giữ `source_data` từ record
 nguồn khi có thể, `collected_at`, và `source_data_status`. Source record loại các trường xác
@@ -9,15 +11,31 @@ Comment DOM có `source=dom`; parent có thể được suy luận (`parent_infe
 không có metadata này và được đánh dấu `unknown`. Các bài không qua AI pre-filter vẫn được
 giữ trong kết quả với `filter_selected=false`; chỉ bài được chọn được xử lý comments/AI.
 
-Trong Travel & Places, lựa chọn **Exclude posts from my previous sessions** quyết định có
-bỏ bài đã lưu trong các session trước của cùng user không. Dù tắt lựa chọn này, bài trùng
-giữa các keyword trong cùng lượt vẫn được gộp. Log INFO và lỗi ghi ra stdout: xem terminal
-khi chạy local hoặc mục Logs của backend trên Render; log có thể chứa query và URL bài.
+Trong Threads Scraper và Travel & Places, lựa chọn **Exclude posts from previous sessions**
+mặc định tắt. Khi bật (`check_duplicate=true`), worker bỏ qua bài có cùng post ID đã lưu
+trong các session không bị hủy của cùng user; không xóa hoặc thay đổi các session trước.
+Kết quả có thể ít bài hơn, kể cả khi tìm kiếm trả về đủ bài. Khi tắt, các bài cũ vẫn có thể
+được thu thập lại; bài trùng ID hoặc URL trong cùng một lượt vẫn được gộp. `duplicate_count`
+gồm cả số bài bị bỏ giữa các session và số bài được gộp trong cùng lượt; `search_attempts`
+ghi riêng hai loại cho lượt chạy mới.
 
-`THREADS_TXT_ARCHIVE_ENABLED=false` (mặc định) tắt tự động lưu TXT lên Cloudinary; JSON
-vẫn lưu trong database và có thể tải TXT theo yêu cầu. Các TXT đã lưu trước đây không bị
-xóa tự động; khi xóa session, worker vẫn xóa các cloud asset cũ trước khi xóa database.
-Đặt biến thành `true` và khởi động lại worker để bật lại archive và xử lý hàng đợi cũ.
+Các thiết lập cũ trong browser được đọc lại nhưng `check_duplicate` được đặt về `false`
+một lần khi chuyển sang phiên bản preference mới. Sau đó lựa chọn do người dùng thay đổi
+được ghi nhớ cho các lượt tiếp theo. Các job đã tạo giữ nguyên request và không bị thay đổi.
+Log INFO và lỗi ghi ra stdout: xem terminal khi chạy local hoặc mục Logs của backend trên
+Render; log có thể chứa query và URL bài.
+Khi bật chống trùng giữa session và có dữ liệu cũ, crawler có thể xem tới bốn lần số bài
+yêu cầu (tối đa 100 kết quả mỗi keyword/mode) để tìm bài mới; số bài mới được thêm vẫn
+không vượt mức đã chọn. Không bảo đảm tìm đủ nếu nguồn có nhiều bài trùng hoặc dừng tải.
+Mỗi keyword được phân bổ tuần tự theo vòng giữa các account; chế độ top/recent của cùng
+keyword dùng cùng account. Không chạy các account song song để hạn chế RAM. Khi session
+thiếu, hết hạn hoặc bị chuyển về đăng nhập, worker thử đăng nhập lại một lần nếu account
+có username/password; session mới được lưu vào file và database. Nếu Threads yêu cầu
+challenge không thể xử lý tự động, hãy đăng nhập thủ công và import lại session.
+
+Không còn upload TXT lên Cloudinary; JSON vẫn lưu trong database và có thể tải TXT theo
+yêu cầu. Các TXT đã lưu trước đây không bị xóa tự động; khi xóa session, worker vẫn xóa
+các cloud asset cũ trước khi xóa database.
 Giới hạn capture của trình duyệt vẫn có thể bỏ sót response; record nguồn đã thu thập
 được không còn bị bỏ chỉ vì vượt 32 KB. Dataset lớn có thể vượt bộ nhớ hoặc quota database.
 
@@ -65,11 +83,8 @@ Mọi biến môi trường nằm trong `apps/backend/.env`; xem template
 `apps/backend/.env.example`. `GROQ_API_KEY` dùng chung với các tính năng backend hiện có.
 Không cần `.env`, `config.py` hoặc `accounts.json` riêng cho scraper.
 
-Cloudinary dùng ba biến backend-only: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`,
-`CLOUDINARY_API_SECRET`. Điền trong `apps/backend/.env` hoặc secret environment khi deploy,
-không gửi secret qua chat hoặc đưa vào frontend. Khi thiếu cấu hình, scraper vẫn lưu JSONB
-và cho tải TXT; hàng đợi archive giữ lỗi an toàn và retry sau khi worker được restart với
-cấu hình mới. Các biến đã có placeholder trong `.env.example`.
+Ba biến backend-only `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
+chỉ cần để xóa asset Cloudinary cũ. Không upload TXT mới.
 
 ```dotenv
 THREADS_ENABLED=true
@@ -233,7 +248,7 @@ Worker dùng PostgreSQL advisory lock riêng, xử lý FIFO từng job để h�
 đang chạy chuyển `failed/WORKER_INTERRUPTED`; dữ liệu đã checkpoint vẫn còn, job đang chờ
 vẫn được xử lý. Đóng tab, trình duyệt hoặc frontend không hủy job; backend/worker phải tiếp
 tục chạy. Không tự chạy lại job đã cào một phần để tránh thêm request và chi phí AI.
-Consumer cũng xử lý upload/xóa Cloudinary với exponential backoff 30 giây đến 1 giờ.
+Consumer xử lý xóa asset Cloudinary cũ với exponential backoff 30 giây đến 1 giờ.
 
 ## API
 
@@ -250,7 +265,7 @@ trả `404`, kể cả export và thao tác trên public session.
 | `POST` | `/api/v1/tools/threads/runs/{id}/cancel` | Hủy queued job hoặc yêu cầu dừng running job. |
 | `PATCH` | `/api/v1/tools/threads/runs/{id}` | Đổi `visibility` thành public/private. |
 | `DELETE` | `/api/v1/tools/threads/runs/{id}` | Trả `202`, yêu cầu dừng và xóa vĩnh viễn cloud/database. |
-| `GET` | `/api/v1/tools/threads/runs/{id}/export?format=json` | Tải JSON đã lưu, kể cả kết quả từng phần. |
+| `GET` | `/api/v1/tools/threads/runs/{id}/export?format=json&detail=basic` | Tải JSON mức `basic`, `standard` hoặc `full`; mặc định `basic`. |
 | `GET` | `/api/v1/tools/threads/runs/{id}/export?format=txt` | Toàn bộ session theo `threads-text-v2`, có ID và quan hệ cha–con. |
 
 Request ví dụ:
@@ -317,13 +332,9 @@ Cứ mỗi khi chạy xong một từ khóa, hệ thống tự động lưu (com
    - Worker dọn dẹp artifact (`ThreadsArtifacts.run_once`) kiểm tra và xóa vĩnh viễn file text archive trên Cloudinary (nếu đã từng tải lên).
    - Tiến hành xóa vĩnh viễn bản ghi `ToolRun` cùng toàn bộ bản ghi liên quan qua cơ chế cascade delete trong cơ sở dữ liệu.
 
-Migration `20261102_0008` đổi metadata từ `markdown_*` sang `archive_*`, thêm `legacy_archive_public_id`, và đưa session cũ về pending. Worker ghi TXT thành công trước khi xóa Markdown cũ; lỗi giữ cả hai reference để retry hoặc xóa session an toàn. API không còn export `md`.
-
-TXT được archive khi job hoàn tất hợp lệ. Mỗi session dùng đúng một raw asset `cyverse/threads/{run_id}.txt`, `type=authenticated`, `overwrite=true`, `backup=false`. Thay visibility sẽ cập nhật cùng asset. Public/private của ứng dụng luôn kiểm tra tại API; không trả delivery URL hoặc chữ ký Cloudinary cho browser. Download TXT dựng từ snapshot PostgreSQL để tải được cả dữ liệu từng phần hoặc khi cloud đang lỗi. Nội dung không tin cậy nằm trong các dòng literal có tiền tố `|`. JSON/TXT download không ghi file `latest` dùng chung.
-
-Adapter dùng HTTP async đã có trong dự án, theo [Cloudinary Upload API](https://cloudinary.com/documentation/image_upload_api_reference),
-[quy tắc chữ ký](https://cloudinary.com/documentation/authentication_signatures) và
-[authenticated assets](https://cloudinary.com/documentation/control_access_to_media).
+Các Cloudinary ID cũ được giữ để cleanup khi xóa session. Không có upload TXT mới.
+Download TXT được dựng từ snapshot PostgreSQL theo yêu cầu; nội dung không tin cậy nằm
+trong các dòng literal có tiền tố `|`.
 
 Không tải media về disk, không tự lấy public proxy, không đưa credentials, proxy hoặc
 session vào request/result API.
