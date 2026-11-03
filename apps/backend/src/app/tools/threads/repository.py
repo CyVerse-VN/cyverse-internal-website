@@ -12,6 +12,8 @@ from app.db.base import utc_now
 from app.models.threads import (
     ThreadsAccountSessionRecord,
     ThreadsCommentRecord,
+    ThreadsPOICandidateRecord,
+    ThreadsPOIMentionRecord,
     ThreadsPostRecord,
     ThreadsResultRecord,
 )
@@ -113,7 +115,8 @@ class ThreadsRepository:
         )
         if run is not None and (
             run.tool_name != "threads"
-            or run.details.get("request") != request.model_dump(mode="json")
+            or ThreadsRequest.model_validate(run.details.get("request")).model_dump(mode="json")
+            != request.model_dump(mode="json")
         ):
             raise ThreadsError(
                 "IDEMPOTENCY_CONFLICT", "This idempotency key has different input.", 409
@@ -194,6 +197,44 @@ class ThreadsRepository:
                     stored.position = index
                 stored.parent_comment_id = comment.parent_id
                 stored.data = comment.model_dump(mode="json")
+
+        if result.discovery and result.discovery.poi_candidates:
+            cands = []
+            for cand in result.discovery.poi_candidates:
+                c_id = UUID(cand.id) if isinstance(cand.id, str) else cand.id
+                cands.append(
+                    ThreadsPOICandidateRecord(
+                        id=c_id,
+                        canonical_name=cand.canonical_name,
+                        category=cand.category,
+                        area=cand.area,
+                        address=cand.address,
+                        verification_status=cand.verification_status,
+                        metadata_json={"distinct_sources": cand.distinct_sources_count},
+                    )
+                )
+            snapshot.poi_candidates = cands
+
+        if result.discovery and result.discovery.poi_mentions:
+            mens = []
+            for m in result.discovery.poi_mentions:
+                m_id = UUID(m.id) if isinstance(m.id, str) else m.id
+                mens.append(
+                    ThreadsPOIMentionRecord(
+                        id=m_id,
+                        post_id=m.source_post_id,
+                        comment_id=m.source_comment_id,
+                        name_text=m.name_text,
+                        category_text=m.category_text,
+                        area_text=m.area_text,
+                        address_text=m.address_text,
+                        evidence_text=m.evidence_text,
+                        start_offset=m.start_offset,
+                        end_offset=m.end_offset,
+                        context_incomplete=m.context_incomplete,
+                    )
+                )
+            snapshot.poi_mentions = mens
 
     async def save_snapshot(self, run_id: UUID, result: ThreadsResult) -> None:
         run = await self._locked(run_id)

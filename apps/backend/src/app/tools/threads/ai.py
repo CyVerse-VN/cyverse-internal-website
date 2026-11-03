@@ -1,12 +1,13 @@
 import json
 import logging
-from typing import Protocol, TypeVar
+from typing import Literal, Protocol, TypeVar
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import settings
 from app.tools.threads.config import ThreadsConfig
+from app.tools.threads.discovery_schemas import DiscoveryQuery, DiscoveryQueryPlan
 from app.tools.threads.errors import ThreadsError
 from app.tools.threads.schemas import ThreadsAnalysis, ThreadsPost
 
@@ -31,6 +32,21 @@ class GroupedKeywordsResponse(BaseModel):
 
 class FilterResponse(BaseModel):
     relevant_post_ids: list[str] = Field(max_length=15)
+
+
+class GeneratedQuery(BaseModel):
+    text: str = Field(min_length=1, max_length=100)
+    angle: Literal["demand", "experience", "neighborhood", "topic_specific"]
+    target_content: Literal["direct", "discussion", "both"]
+    rationale: str = Field(default="", max_length=300)
+
+
+class QueryPlanResponse(BaseModel):
+    topic: str = Field(default="", max_length=300)
+    geographic_scope: str | None = Field(default=None, max_length=200)
+    desired_attributes: list[str] = Field(default_factory=list, max_length=20)
+    exclusions: list[str] = Field(default_factory=list, max_length=20)
+    queries: list[GeneratedQuery] = Field(default_factory=list, max_length=20)
 
 
 class ThreadsAI(Protocol):
@@ -127,6 +143,37 @@ class GroqThreadsAI:
             )
         logger.info("Generated %d search keywords: %s", len(keywords), keywords)
         return keywords[:target_count]
+
+    async def plan_discovery_queries(
+        self, query: str, seed_keywords: list[str], max_queries: int
+    ) -> DiscoveryQueryPlan:
+        instruction = (
+            "You plan Threads searches for discovering real places from community posts. "
+            "Analyze the request: core topic, geographic scope, desired place attributes, "
+            "exclusion criteria. Then write search queries from different angles, each with a "
+            "different search intent: 'demand' (people asking the community where to go or eat), "
+            "'experience' (people sharing places or reviews), 'neighborhood' (area-specific), "
+            "'topic_specific' (the topic itself). Use short phrases real users write, in the "
+            "request's language, keeping Vietnamese diacritics. Do not add negative keywords. "
+            "Do not output queries that only differ in wording but share one intent. "
+            f"Return at most {max_queries} queries (each up to 100 characters). "
+            "target_content says whether places appear in the 'direct' post body, in the "
+            "'discussion' comments, or 'both'."
+        )
+        result = await self._complete(
+            instruction,
+            {"query": query, "manual_seed_keywords": seed_keywords},
+            QueryPlanResponse,
+        )
+        return DiscoveryQueryPlan(
+            topic=result.topic,
+            geographic_scope=result.geographic_scope,
+            desired_attributes=result.desired_attributes,
+            exclusions=result.exclusions,
+            queries=[
+                DiscoveryQuery(**item.model_dump(), origin="generated") for item in result.queries
+            ],
+        )
 
     async def analyze_grouped_keywords(self, query: str) -> GroupedKeywordsResponse:
         instruction = (

@@ -171,6 +171,11 @@ export function ThreadsTravelWorkspace({
     search_timeout_seconds: -1,
     min_delay_seconds: 2,
     max_delay_seconds: 4,
+    discovery_mode: "legacy",
+    query_planning: true,
+    triage_provider: "groq",
+    discovery_comment_posts: 20,
+    use_manual_keywords: true,
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -179,7 +184,7 @@ export function ThreadsTravelWorkspace({
   const activeRun = propActiveRun ?? localActiveRun;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"places" | "curated">("places");
+  const [viewMode, setViewMode] = useState<"places" | "curated" | "poi">("places");
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function getStageLabel(stage: string): string {
@@ -310,8 +315,9 @@ export function ThreadsTravelWorkspace({
   // Start scraper session as normal
   async function handleStartCrawler() {
     if (!prompt.trim()) return;
+    const isDiscoveryPlanning = parameters.discovery_mode === "evidence_poi" && parameters.query_planning;
     const activeKws = Array.from(selectedKeywords);
-    if (activeKws.length === 0) {
+    if (!isDiscoveryPlanning && activeKws.length === 0) {
       setSubmitError(t("threads.noKeywordsSelected"));
       return;
     }
@@ -386,6 +392,7 @@ export function ThreadsTravelWorkspace({
   const commentCount = activeRun?.comment_count ?? activeRun?.result?.total_comments ?? 0;
   const posts = activeRun?.result?.posts ?? [];
   const selectedCount = selectedKeywords.size;
+  const isDiscoveryPlanning = parameters.discovery_mode === "evidence_poi" && parameters.query_planning;
 
   const isUnlimitedComments = parameters.max_comments_per_post <= 0;
   const activeFilterLevel =
@@ -831,6 +838,131 @@ export function ThreadsTravelWorkspace({
             </small>
           </div>
 
+          {/* Discovery Engine V2 Options */}
+          <div className={styles.segmentedGroup}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                <Compass size={14} />
+                Chế độ Discovery Engine V2
+              </span>
+              <Badge variant={parameters.discovery_mode === "evidence_poi" ? "default" : "outline"}>
+                {parameters.discovery_mode === "evidence_poi" ? "Active" : "Legacy"}
+              </Badge>
+            </div>
+            <div className={styles.segmentedControl}>
+              <button
+                type="button"
+                className={styles.segmentedButton}
+                data-active={parameters.discovery_mode === "legacy"}
+                onClick={() => updateParameters({ discovery_mode: "legacy" })}
+              >
+                Legacy Scraper
+              </button>
+              <button
+                type="button"
+                className={styles.segmentedButton}
+                data-active={parameters.discovery_mode === "evidence_poi"}
+                onClick={() => updateParameters({ discovery_mode: "evidence_poi" })}
+              >
+                POI Discovery Engine
+              </button>
+            </div>
+            <small className={styles.hint}>
+              {parameters.discovery_mode === "evidence_poi"
+                ? "Khám phá địa điểm từ thảo luận, phân loại AI Triage, trích xuất POI có bằng chứng và entity resolution."
+                : "Chế độ cào bài viết truyền thống theo từ khóa và bộ lọc sơ bộ."}
+            </small>
+
+            {parameters.discovery_mode === "evidence_poi" && (
+              <div style={{ display: "grid", gap: 10, padding: 10, background: "rgb(125 140 160 / 6%)", borderRadius: 8, marginTop: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Query Planning (Đa góc nhìn):</span>
+                  <div className={styles.segmentedControl} style={{ maxWidth: 160 }}>
+                    <button
+                      type="button"
+                      className={styles.segmentedButton}
+                      data-active={parameters.query_planning}
+                      onClick={() => updateParameters({ query_planning: true })}
+                    >
+                      Bật
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.segmentedButton}
+                      data-active={!parameters.query_planning}
+                      onClick={() => updateParameters({ query_planning: false })}
+                    >
+                      Tắt
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>AI Triage Provider:</span>
+                  <div className={styles.segmentedControl} style={{ maxWidth: 160 }}>
+                    <button
+                      type="button"
+                      className={styles.segmentedButton}
+                      data-active={parameters.triage_provider === "groq"}
+                      onClick={() => updateParameters({ triage_provider: "groq" })}
+                    >
+                      Groq (Baseline)
+                    </button>
+                    {config?.triage_providers?.includes("jev") && (
+                      <button
+                        type="button"
+                        className={styles.segmentedButton}
+                        data-active={parameters.triage_provider === "jev"}
+                        onClick={() => updateParameters({ triage_provider: "jev" })}
+                      >
+                        Jev AI
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Ngân sách cào bình luận:</span>
+                  <div className={styles.segmentedControl} style={{ maxWidth: 200 }}>
+                    {[10, 20, 30, 50].map((b) => (
+                      <button
+                        key={b}
+                        type="button"
+                        className={styles.segmentedButton}
+                        data-active={parameters.discovery_comment_posts === b}
+                        onClick={() => updateParameters({ discovery_comment_posts: b })}
+                      >
+                        {b} bài
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Giữ keyword thủ công làm seed:</span>
+                  <div className={styles.segmentedControl} style={{ maxWidth: 160 }}>
+                    <button
+                      type="button"
+                      className={styles.segmentedButton}
+                      data-active={parameters.use_manual_keywords}
+                      onClick={() => updateParameters({ use_manual_keywords: true })}
+                    >
+                      Giữ seeds
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.segmentedButton}
+                      data-active={!parameters.use_manual_keywords}
+                      onClick={() => updateParameters({ use_manual_keywords: false })}
+                    >
+                      Chỉ AI
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Advanced Settings Dropdown */}
           <div>
             <button
@@ -1060,11 +1192,13 @@ export function ThreadsTravelWorkspace({
             type="button"
             className={styles.startCrawlerBtn}
             onClick={handleStartCrawler}
-            disabled={isSubmitting || selectedCount === 0}
+            disabled={isSubmitting || (!isDiscoveryPlanning && selectedCount === 0)}
           >
             <Play size={16} />
             {isSubmitting
               ? "Đang chuẩn bị phiên..."
+              : isDiscoveryPlanning && selectedCount === 0
+              ? "Bắt đầu Discovery (Tự động lập kế hoạch từ Prompt)"
               : `Bắt đầu cào dữ liệu (${selectedCount} từ khóa đã chọn)`}
           </Button>
 
@@ -1253,10 +1387,82 @@ export function ThreadsTravelWorkspace({
                 >
                   Bảng phân tích Scraper
                 </button>
+                {activeRun.result?.discovery?.poi_candidates && activeRun.result.discovery.poi_candidates.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.segmentedButton}
+                    data-active={viewMode === "poi"}
+                    onClick={() => setViewMode("poi")}
+                  >
+                    Địa điểm phát hiện ({activeRun.result.discovery.poi_candidates.length})
+                  </button>
+                )}
               </div>
 
               {viewMode === "curated" ? (
                 <ThreadsResults key={activeRun.id} run={activeRun} />
+              ) : viewMode === "poi" ? (
+                <div className={styles.placesList}>
+                  {activeRun.result?.discovery?.poi_candidates?.map((cand, idx) => (
+                    <article key={cand.id || idx} className={styles.placeCard} style={{ borderLeft: "4px solid var(--blue-600)" }}>
+                      <div className={styles.placeCardHeader}>
+                        <div className={styles.placeTitleGroup}>
+                          <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{cand.canonical_name}</h4>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                            {cand.category && (
+                              <Badge variant="outline">{cand.category}</Badge>
+                            )}
+                            {cand.area && (
+                              <Badge variant="secondary"><MapPin size={11} style={{ marginRight: 3 }} />{cand.area}</Badge>
+                            )}
+                            <Badge variant={cand.verification_status === "verified" ? "default" : "secondary"}>
+                              {cand.verification_status === "verified" ? "Đã xác minh qua nhiều nguồn" : "Ứng viên (Cần kiểm chứng)"}
+                            </Badge>
+                            <span style={{ fontSize: 11, color: "var(--muted)", alignSelf: "center" }}>
+                              {cand.distinct_sources_count} nguồn độc lập
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {cand.address && (
+                        <p style={{ fontSize: 13, color: "var(--ink)", margin: "8px 0" }}>
+                          📍 <strong>Địa chỉ trích xuất:</strong> {cand.address}
+                        </p>
+                      )}
+
+                      {cand.claims && cand.claims.length > 0 && (
+                        <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                          <strong style={{ fontSize: 12 }}>Đặc trưng & Đánh giá từ cộng đồng:</strong>
+                          {cand.claims.map((claim, cIdx) => (
+                            <div key={cIdx} style={{ fontSize: 12, background: "rgb(125 140 160 / 7%)", padding: "6px 10px", borderRadius: 6 }}>
+                              <span style={{ fontWeight: 600, color: claim.claim_type === "warning" || claim.claim_type === "closure" ? "var(--red-600)" : "var(--blue-600)" }}>
+                                [{claim.claim_type.toUpperCase()}]
+                              </span>{" "}
+                              <span>{claim.value}</span>
+                              <div style={{ fontStyle: "italic", color: "var(--muted)", marginTop: 2 }}>
+                                “{claim.evidence_text}”
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {cand.mentions && cand.mentions.length > 0 && (
+                        <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
+                          <small style={{ color: "var(--muted)" }}>
+                            Bằng chứng nguồn từ Threads:
+                          </small>
+                          {cand.mentions.slice(0, 3).map((m, mIdx) => (
+                            <div key={mIdx} style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                              • Post {m.source_post_id}: “{m.evidence_text}”
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                </div>
               ) : (
                 <div className={styles.placesList}>
                   {posts.map((post) => (

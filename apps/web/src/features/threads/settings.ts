@@ -28,12 +28,18 @@ export const THREADS_SETTINGS_KEY = "cyverse.threads.settings.v2";
 const LEGACY_THREADS_SETTINGS_KEY = "cyverse.threads.settings.v1";
 export const DEFAULT_THREADS_PARAMETERS: ThreadsParameters = {
   mode: "scraper",
+  discovery_mode: "legacy", discovery_query_planning: true, discovery_max_queries: 10, discovery_comment_budget: 20,
   keywords: [], max_posts_per_keyword: 25, search_type: "recent", check_duplicate: false, include_comments: true,
   max_comment_posts: -1, max_comments_per_post: 25, min_replies: 0,
   expand_query: true, keywords_per_query: 3, pre_filter: false, pre_filter_strictness: "high", curate: false,
   max_accounts: 3, use_proxy: true,
   run_timeout_seconds: 1800, search_timeout_seconds: 120,
   min_delay_seconds: 2, max_delay_seconds: 4,
+  discovery_mode: "legacy",
+  query_planning: true,
+  triage_provider: "groq",
+  discovery_comment_posts: 20,
+  use_manual_keywords: true,
 };
 
 export function parseKeywords(value: string): string[] {

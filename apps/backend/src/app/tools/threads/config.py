@@ -25,6 +25,10 @@ class ThreadsConfig(BaseSettings):
     sessions_dir: Path = BACKEND_ROOT / ".local" / "threads" / "sessions"
     groq_model: str = "qwen/qwen3.8-27b"
     keywords_per_query: int = Field(default=3, ge=1, le=5)
+    discovery_max_queries: int = Field(default=8, ge=1, le=20)
+    jev_api_key: SecretStr | None = None
+    jev_endpoint: str = "https://openrouter.ai/api/alpha/decisions"
+    jev_model: str = "typesafe/jev-1.13"
     min_delay_seconds: float = Field(default=2, ge=0, le=60)
     max_delay_seconds: float = Field(default=4, ge=0, le=60)
     run_timeout_seconds: int = Field(default=1800, ge=30, le=7200)

@@ -4,6 +4,25 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.tools.threads.discovery_schemas import DiscoveryQuery, DiscoveryQueryPlan, PostDiscovery
+from app.tools.threads.poi_schemas import POICandidate, POIMention
+
+
+class DiscoverySummary(BaseModel):
+    plan: DiscoveryQueryPlan | None = None
+    triage_provider: str | None = None
+    direct_posts: int = 0
+    discussion_posts: int = 0
+    excluded_posts: int = 0
+    unclassified_posts: int = 0
+    comment_posts_selected: int = 0
+    comment_posts_completed: int = 0
+    comment_posts_failed: int = 0
+    poi_mentions: list[POIMention] = Field(default_factory=list)
+    poi_candidates: list[POICandidate] = Field(default_factory=list)
+    verified_poi_count: int = 0
+    warnings: list[str] = Field(default_factory=list)
+
 
 class ThreadsParameters(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -28,6 +47,11 @@ class ThreadsParameters(BaseModel):
     search_timeout_seconds: int = Field(default=120, ge=-1, le=600)
     min_delay_seconds: float = Field(default=2.0, ge=0.0, le=60.0)
     max_delay_seconds: float = Field(default=4.0, ge=0.0, le=60.0)
+    discovery_mode: Literal["legacy", "evidence_poi"] = "legacy"
+    query_planning: bool = True
+    triage_provider: Literal["groq", "jev"] = "groq"
+    discovery_comment_posts: int = Field(default=20, ge=1, le=50)
+    use_manual_keywords: bool = True
 
     @field_validator("search_timeout_seconds")
     @classmethod
@@ -48,6 +72,8 @@ class ThreadsParameters(BaseModel):
     def validate_delays(self) -> "ThreadsParameters":
         if self.min_delay_seconds > self.max_delay_seconds:
             raise ValueError("Minimum delay must not exceed maximum delay")
+        if self.discovery_mode != "legacy" and self.mode != "travel":
+            raise ValueError("Discovery mode is only available in travel mode")
         return self
 
 
@@ -73,6 +99,7 @@ class ThreadsConfigResponse(BaseModel):
     ai_available: bool
     cloudinary_ready: bool = False
     defaults: ThreadsParameters
+    triage_providers: list[str] = Field(default_factory=lambda: ["groq"])
     limits: dict[str, int]
 
 
@@ -126,6 +153,7 @@ class ThreadsPost(BaseModel):
     source_data: dict[str, object] | None = None
     source_data_status: Literal["captured", "omitted", "unknown"] = "unknown"
     filter_selected: bool | None = None
+    discovery: PostDiscovery | None = None
 
 
 class ThreadsResult(BaseModel):
@@ -139,6 +167,7 @@ class ThreadsResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     schema_version: int = 1
     search_attempts: list[dict[str, object]] = Field(default_factory=list)
+    discovery: DiscoverySummary | None = None
 
 
 class ThreadsRunResponse(BaseModel):

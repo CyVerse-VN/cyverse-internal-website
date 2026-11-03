@@ -1,5 +1,19 @@
 # Threads Scraper Tool
 
+## Discovery post triage (đang phát triển)
+
+Travel có thể chọn `discovery_mode="evidence_poi"` để thử Query Planning và Groq
+post triage. Đây mới là nền tảng chọn bài: chưa có trích xuất POI có evidence,
+entity resolution hoặc xác minh, nên không xem kết quả là danh sách địa điểm đã xác nhận.
+Mặc định vẫn là `legacy`. Discovery giữ keyword thủ công làm seed, giới hạn số query
+bằng `discovery_max_queries` (mặc định 10, tối đa 20) và comment bằng
+`discovery_comment_budget` (mặc định 20, tối đa 100); giới hạn `max_comment_posts`
+dương vẫn được áp dụng nếu nhỏ hơn. `discovery_query_planning=false` tắt lập kế hoạch.
+Triage cần Groq ngay cả khi tắt lập kế hoạch. Các metadata `discovery_plan`, `triage`
+và `comment_collection_status` được lưu trong snapshot của session, theo cùng quyền
+truy cập và vòng đời xóa/hủy hiện tại. `not_attempted` không có nghĩa bài không có comment.
+Trọng số ranking ban đầu là heuristic và chưa được hiệu chuẩn bằng benchmark.
+
 JSON export có ba mức khi tải: `basic` (mặc định: bài và bình luận), `standard`
 (thêm metadata và thống kê), `full` (thêm source data). Mức xuất không thay đổi dữ
 liệu trong database. `standard` và `full` chứa run ID, request, trạng thái và `result`.
@@ -370,3 +384,73 @@ con dưới cha, giữ nguyên parent ngoài collection, đánh dấu quan hệ 
 và không tự đoán cha cho DOM fallback. Từng dòng nội dung có tiền tố `|`, không bị nhầm với
 metadata/dấu kết thúc khi nội dung chứa tên section hoặc instruction. JSONB vẫn là dữ liệu
 có cấu trúc chính; TXT dùng để đọc và gửi AI, không bảo đảm đã thu thập toàn bộ comments nguồn.
+
+
+---
+
+## Threads Discovery Engine V2 (Social POI Discovery)
+
+Trong chế độ Travel & Places (`mode="travel"`), hệ thống hỗ trợ Discovery Engine V2 (`discovery_mode="evidence_poi"`) để khám phá và định danh địa điểm (POI) từ nội dung và thảo luận cộng đồng trên Threads. Chế độ cào dữ liệu cũ (`discovery_mode="legacy"`) vẫn được giữ nguyên mặc định.
+
+### 1. Luồng xử lý và kiến trúc
+
+```text
+Natural Language Query -> [1] Query Planner (Multi-perspective)
+                       -> [2] Threads Search (Top/Recent tracking angle)
+                       -> [3] Post Deduplication
+                       -> [4] AI Post Triage & Ranking (Multi-signal)
+                       -> [5] Adaptive Comment Crawling (Discussion potential)
+                       -> [6] Comment Cleaning & Context Reconstruction
+                       -> [7] Evidence-grounded POI Extraction (Span-level)
+                       -> [8] Entity Resolution & Provenance Preservation
+                       -> [9] POI Candidates Storage & Verification Status
+```
+
+### 2. Các thành phần chính
+
+- **Multi-perspective Query Planning (`query_planner.py`)**:
+  - Phân tích yêu cầu theo: Core topic, Geographic scope, Desired attributes, Exclusions.
+  - Sinh từ khóa theo các góc nhìn: Demand-driven (`demand`, người dùng hỏi gợi ý), Experience-driven (`experience`, chia sẻ quán ruột/núp hẻm), Khu vực (`neighborhood`), và Topic (`topic_specific`).
+  - Bảo toàn từ khóa thủ công (`use_manual_keywords=true`) làm seed đầu tiên, không ghi đè hoặc loại bỏ từ khóa tiếng Việt có dấu. Loại bỏ các truy vấn phủ định không mong muốn.
+  - Ghi nhận `angle` cho từng lượt tìm kiếm trong `result.search_attempts`.
+
+- **AI Post Triage & Routing (`triage.py`, `ranking.py`)**:
+  - Đánh giá đa tín hiệu: `geo_match` (`yes`, `no`, `uncertain`), `topic_relevance` (0-1), `direct_poi_score` (0-4), `discussion_poi_score` (0-4), `promotion_risk` (0-4).
+  - Định tuyến bài viết:
+    - `DIRECT_POI`: Bài viết chia sẻ địa điểm cụ thể.
+    - `DISCUSSION_POI`: Bài viết hỏi đáp/thảo luận có tiềm năng chứa gợi ý trong bình luận.
+    - `BOTH`: Vừa có POI trực tiếp vừa có thảo luận giá trị.
+    - `EXCLUDED`: Sai phạm vi địa lý rõ ràng, không liên quan hoặc nguy cơ quảng cáo/spam cao.
+    - `UNCLASSIFIED`: Giữ nguyên dữ liệu khi triage không khả dụng, không tự ý loại trừ.
+  - Xếp hạng cào bình luận dựa trên tiềm năng thảo luận (`discussion_poi_score`), không dựa thuần túy vào `reply_count` để tránh đẩy bài viral lạc đề lên đầu.
+
+- **Comment Cleaning & Context Reconstruction (`comment_processing.py`)**:
+  - Chuẩn hóa Unicode NFC, loại bỏ văn bản giao diện (nút Translate, nhãn thời gian UI).
+  - Khử trùng lặp giữa bản ghi DOM fallback và bình luận có cấu trúc.
+  - Xây dựng cây hội thoại `(Post context + Parent comment + Child replies)`.
+  - Đánh dấu `context_incomplete=true` khi thiếu ngữ cảnh cha hoặc bình luận mồ côi. Chunking theo cụm hội thoại trong giới hạn token thay vì cắt cụt thô bạo.
+
+- **Evidence-grounded POI Extraction (`poi_extractor.py`, `evidence_validator.py`)**:
+  - Trích xuất `POIMention` (tên, khu vực, địa chỉ, bằng chứng) và `POIClaim` (loại thông tin: món ăn, giá cả, không gian, cảnh báo, đóng cửa).
+  - Bắt buộc kiểm tra bằng chứng (`find_evidence_span`): `evidence_text` phải tồn tại trong văn bản nguồn. Xác định vị trí offset chính xác (`start_offset`, `end_offset`).
+  - Không chấp nhận địa chỉ hoặc tên quán do AI tự suy đoán. Thuộc tính không có trong nguồn được đưa về `null`.
+  - Cảnh báo đóng cửa (`closure`) hoặc trải nghiệm xấu được lưu thành claim cảnh báo, không bị bỏ qua.
+
+- **Entity Resolution & Provenance (`poi_resolver.py`)**:
+  - Chuẩn hóa tên và so khớp tương đồng (Fuzzy Matching).
+  - Phân biệt chi nhánh (Branch discrimination): Các chi nhánh khác quận/khu vực không bị gộp sai.
+  - Bảo toàn toàn bộ mentions và claims nguồn.
+  - Đánh giá trạng thái xác minh:
+    - `candidate`: Đã tìm được địa điểm ứng viên, cần kiểm chứng.
+    - `verified`: Đã có từ 2 nguồn độc lập trở lên và có thông tin địa lý rõ ràng.
+    - `unresolved`: Chưa đủ thông tin nhận diện.
+    - `rejected`: Địa điểm sai hoặc không hợp lệ.
+
+- **Lưu trữ cơ sở dữ liệu (`models/threads.py`, Migration `20261103_0010`)**:
+  - Bảng `threads_poi_candidates`: Lưu canonical POI, địa chỉ, phân loại, trạng thái xác minh.
+  - Bảng `threads_poi_mentions`: Lưu từng lần xuất hiện của POI kèm liên kết bài viết/bình luận nguồn và evidence span.
+  - Bảng `threads_poi_claims`: Lưu các thuộc tính, nhận xét, đánh giá kèm quote bằng chứng.
+  - Tự động xóa sạch qua cascade khi session bị hủy hoặc xóa.
+
+- **Analytics & Retrieval Feedback (`feedback.py`)**:
+  - Đo lường Query Yield, Unique Post Yield, POI Mention Yield, Verified POI Yield và Grounding Rate theo từng query.
