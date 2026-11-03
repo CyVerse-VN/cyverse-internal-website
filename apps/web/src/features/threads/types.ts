@@ -18,7 +18,8 @@ export const threadsParametersSchema = z.object({
   max_accounts: z.number().int().min(-1).max(10).default(3),
   use_proxy: z.boolean().default(true),
   run_timeout_seconds: z.number().int().min(-1).max(86400).default(1800),
-  search_timeout_seconds: z.number().int().min(15).max(600).default(120),
+  search_timeout_seconds: z.number().int().min(-1).max(600)
+    .refine((value) => value === -1 || value >= 15).default(120),
   min_delay_seconds: z.number().min(0).max(60).default(2),
   max_delay_seconds: z.number().min(0).max(60).default(4),
 });

@@ -332,6 +332,34 @@ def search_source(count: int, *, more: bool) -> dict[str, object]:
 
 
 @pytest.mark.asyncio
+async def test_unlimited_search_does_not_apply_a_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.tools.threads import crawler as crawler_module
+
+    monkeypatch.setattr(crawler_module, "time", SimpleNamespace(monotonic=Mock(side_effect=[0, 1000, 2000])))
+    page = SimpleNamespace(
+        evaluate=AsyncMock(return_value={"top": 0, "height": 12000, "viewport": 900}),
+        wait_for_timeout=AsyncMock(),
+    )
+    crawler = PlaywrightThreadsCrawler([page], search_timeout_seconds=-1)
+
+    @asynccontextmanager
+    async def sources(_page, _url):
+        yield []
+
+    crawler._sources = sources
+    crawler._scripts = AsyncMock(side_effect=[[search_source(1, more=True)], [search_source(2, more=False)]])
+    result = await crawler.search("travel", 2, "recent")
+    assert len(result) == 2
+    assert crawler._scripts.await_count == 2
+
+
+def test_search_timeout_accepts_only_unlimited_or_supported_positive_values() -> None:
+    assert request(search_timeout_seconds=-1).search_timeout_seconds == -1
+    with pytest.raises(ValidationError):
+        request(search_timeout_seconds=0)
+
+
+@pytest.mark.asyncio
 async def test_search_continues_past_stale_counts_until_it_reaches_the_requested_limit() -> None:
     page = SimpleNamespace(
         evaluate=AsyncMock(return_value={"top": 0, "height": 12000, "viewport": 900}),

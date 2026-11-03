@@ -227,7 +227,10 @@ class PlaywrightThreadsCrawler:
             stalled = 0
             search_ready = False
             previous_state: ScrollState | None = None
-            deadline = time.monotonic() + self.search_timeout_seconds
+            deadline = (
+                time.monotonic() + self.search_timeout_seconds
+                if self.search_timeout_seconds > 0 else None
+            )
             stop_reason = "the search scroll limit was reached"
             try:
                 async with self._sources(page, url) as captured:
@@ -276,7 +279,7 @@ class PlaywrightThreadsCrawler:
                                 else "the end of the feed stopped loading new results"
                             )
                             break
-                        if time.monotonic() >= deadline:
+                        if deadline is not None and time.monotonic() >= deadline:
                             stop_reason = "the per-keyword search time limit was reached"
                             break
                         previous_state = state

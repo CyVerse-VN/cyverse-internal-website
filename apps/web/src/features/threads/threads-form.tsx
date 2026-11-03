@@ -337,7 +337,7 @@ export function ThreadsForm({
                     type="button"
                     className={styles.segmentedGridButton}
                     data-active={parameters.run_timeout_seconds === val}
-                    onClick={() => onChange({ run_timeout_seconds: val })}
+                    onClick={() => onChange(val === -1 ? { run_timeout_seconds: -1, search_timeout_seconds: -1 } : { run_timeout_seconds: val })}
                   >
                     {label}
                   </button>
@@ -361,6 +361,7 @@ export function ThreadsForm({
                   { label: "2m", val: 120 },
                   { label: "5m", val: 300 },
                   { label: "10m", val: 600 },
+                  { label: t("threads.runTimeoutUnlimited"), val: -1 },
                 ].map(({ label, val }) => (
                   <button
                     key={val}

@@ -245,7 +245,7 @@ class ThreadsService:
                 "posts_per_keyword": 100,
                 "comment_posts": 500,
                 "comments_per_post": 500,
-                "run_timeout_seconds": 10800,
+                "run_timeout_seconds": 86400,
                 "search_timeout_seconds": 600,
             },
         )

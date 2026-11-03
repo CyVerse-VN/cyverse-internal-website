@@ -25,9 +25,16 @@ class ThreadsParameters(BaseModel):
     max_accounts: int = Field(default=3, ge=-1, le=10)
     use_proxy: bool = True
     run_timeout_seconds: int = Field(default=1800, ge=-1, le=86400)
-    search_timeout_seconds: int = Field(default=120, ge=15, le=600)
+    search_timeout_seconds: int = Field(default=120, ge=-1, le=600)
     min_delay_seconds: float = Field(default=2.0, ge=0.0, le=60.0)
     max_delay_seconds: float = Field(default=4.0, ge=0.0, le=60.0)
+
+    @field_validator("search_timeout_seconds")
+    @classmethod
+    def validate_search_timeout(cls, value: int) -> int:
+        if value != -1 and value < 15:
+            raise ValueError("Search timeout must be -1 or at least 15 seconds")
+        return value
 
     @field_validator("keywords")
     @classmethod

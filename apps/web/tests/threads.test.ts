@@ -20,6 +20,8 @@ describe("Threads parameters", () => {
     expect(threadsRequestSchema.safeParse({ ...DEFAULT_THREADS_PARAMETERS, query: "travel", max_accounts: 15 }).success).toBe(false);
     expect(threadsRequestSchema.safeParse({ ...DEFAULT_THREADS_PARAMETERS, query: "travel", keywords_per_query: 4 }).success).toBe(true);
     expect(threadsRequestSchema.safeParse({ ...DEFAULT_THREADS_PARAMETERS, query: "travel", keywords_per_query: 10 }).success).toBe(false);
+    expect(threadsRequestSchema.safeParse({ ...DEFAULT_THREADS_PARAMETERS, query: "travel", run_timeout_seconds: -1, search_timeout_seconds: -1 }).success).toBe(true);
+    expect(threadsRequestSchema.safeParse({ ...DEFAULT_THREADS_PARAMETERS, query: "travel", search_timeout_seconds: 0 }).success).toBe(false);
   });
 
   it("restores valid preferences and discards invalid storage", () => {

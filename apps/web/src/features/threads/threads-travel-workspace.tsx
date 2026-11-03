@@ -167,7 +167,7 @@ export function ThreadsTravelWorkspace({
     max_accounts: 3,
     use_proxy: true,
     run_timeout_seconds: -1, // Unlimited by default for continuous runner
-    search_timeout_seconds: 120,
+    search_timeout_seconds: -1,
     min_delay_seconds: 2,
     max_delay_seconds: 4,
   });
@@ -872,7 +872,7 @@ export function ThreadsTravelWorkspace({
                         type="button"
                         className={styles.segmentedGridButton}
                         data-active={parameters.run_timeout_seconds === val}
-                        onClick={() => updateParameters({ run_timeout_seconds: val })}
+                        onClick={() => updateParameters(val === -1 ? { run_timeout_seconds: -1, search_timeout_seconds: -1 } : { run_timeout_seconds: val })}
                       >
                         {label}
                       </button>
@@ -896,6 +896,7 @@ export function ThreadsTravelWorkspace({
                       { label: "2m", val: 120 },
                       { label: "5m", val: 300 },
                       { label: "10m", val: 600 },
+                      { label: t("threads.runTimeoutUnlimited"), val: -1 },
                     ].map(({ label, val }) => (
                       <button
                         key={val}

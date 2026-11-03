@@ -41,6 +41,13 @@ Khi bật expand ở tab Scraper, AI tạo tối đa 1–5 từ khóa theo lựa
 
 Mục "Cài đặt nâng cao" (Advanced settings) cho phép tùy chỉnh thời gian chạy tối đa (`run_timeout_seconds`, đặt `-1` để chạy đến khi xong hoặc từ 60s–86400s), thời gian tìm kiếm mỗi từ khóa (`search_timeout_seconds`, 15s–600s), độ trễ (`min_delay_seconds`, `max_delay_seconds`), số bài lấy bình luận (`max_comment_posts`, tối đa 500 bài), số phản hồi tối thiểu (`min_replies`), số tài khoản xoay vòng (`max_accounts`) và proxy (`use_proxy`). Các giá trị được kiểm tra ở frontend và backend; preference hợp lệ được nhớ trong browser.
 
+Chọn **Until done** ở thời gian chạy sẽ bỏ giới hạn thời gian toàn job và thời gian tìm
+kiếm từng keyword; có thể chọn lại giới hạn keyword riêng. Chế độ này không bảo đảm lấy
+toàn bộ dữ liệu: giới hạn số bài/bình luận, số vòng cuộn, kiểm tra feed ngừng tải và
+timeout tải trang vẫn được áp dụng. Job vẫn có thể dừng do lỗi, bị hủy hoặc service bị
+restart/sleep. API dùng `-1` cho từng timeout không giới hạn; timeout tìm kiếm có giới hạn
+nhận từ 15 đến 600 giây.
+
 ### Hàng đợi Session (FIFO Queue)
 Khi một session đang chạy (`running`), người dùng có thể tạo thêm nhiều session khác. Các session mới sẽ tự động lưu vào hệ thống dưới trạng thái `queued` (chờ xử lý) và xếp thứ tự trong hàng đợi (`#1`, `#2`,...). Worker xử lý tuần tự từng session theo nguyên tắc FIFO (First-In, First-Out), đảm bảo an toàn tài nguyên và không bị xung đột trình duyệt.
 
