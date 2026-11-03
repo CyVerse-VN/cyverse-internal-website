@@ -238,6 +238,7 @@ class ThreadsService:
                 settings.groq_api_key and settings.groq_api_key.get_secret_value().strip()
             ),
             cloudinary_ready=cloudinary_config.ready,
+            txt_archive_enabled=self.config.txt_archive_enabled,
             defaults=ThreadsParameters(),
             limits={
                 "keywords": 20,

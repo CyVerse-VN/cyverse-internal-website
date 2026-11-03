@@ -8,8 +8,9 @@ import { threadsApi } from "./api";
 import { threadsRunSchema, type ThreadsRun } from "./types";
 import styles from "./threads.module.css";
 
-export function ThreadsSessionControls({ run, onUpdated }: {
+export function ThreadsSessionControls({ run, onUpdated, archiveEnabled }: {
   run: ThreadsRun;
+  archiveEnabled: boolean;
   onUpdated: (run: ThreadsRun) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -57,7 +58,8 @@ export function ThreadsSessionControls({ run, onUpdated }: {
       Deleting Cloudinary and database data. This continues after you close the page.
       {run.storage_error && " Cleanup is waiting for cloud storage and will retry automatically."}
     </p> : <p className={styles.hint} role="status">
-      {run.archive_status === "ready" ? "TXT archived in Cloudinary." :
+      {!archiveEnabled ? "Automatic TXT archiving is disabled. JSON is saved in the database." :
+        run.archive_status === "ready" ? "TXT archived in Cloudinary." :
         run.archive_status === "failed" ? "Cloudinary archive is pending. Saved data and local downloads remain available; upload will retry automatically." :
         "TXT will be archived after the collection stops."}
     </p>}
@@ -69,7 +71,7 @@ export function ThreadsSessionControls({ run, onUpdated }: {
         <dt>Created</dt><dd>{new Date(run.created_at).toLocaleString()}</dd>
         <dt>Started</dt><dd>{run.started_at ? new Date(run.started_at).toLocaleString() : "Not started"}</dd>
         <dt>Finished</dt><dd>{run.completed_at ? new Date(run.completed_at).toLocaleString() : "In progress"}</dd>
-        <dt>Cloud archive</dt><dd>{run.archive_status}</dd>
+        <dt>Cloud archive</dt><dd>{archiveEnabled ? run.archive_status : "Disabled"}</dd>
       </dl>
     </details>
     {error && <p className={styles.error} role="alert">{error}</p>}

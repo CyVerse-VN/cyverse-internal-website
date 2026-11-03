@@ -3,8 +3,12 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { ACCESS_TOKEN_COOKIE_NAME } from "./cookies";
-import type { AuthUser } from "./types";
+import {
+  ACCESS_TOKEN_COOKIE_NAME,
+  REFRESH_TOKEN_COOKIE_NAME,
+  authCookieOptions,
+} from "./cookies";
+import { isTokenPairResponse, type AuthUser } from "./types";
 
 function getBackendUrl(): string {
   return (process.env.BACKEND_API_URL ?? "http://localhost:8000/api/v1").replace(/\/$/, "");
@@ -36,16 +40,57 @@ export async function getAccessToken(): Promise<string | null> {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   const token = await getAccessToken();
-  if (!token) {
+  if (token) {
+    try {
+      const response = await backendRequest("/auth/me", {}, token);
+      if (response.ok) {
+        return (await response.json()) as AuthUser;
+      }
+    } catch {
+      // Continue to refresh fallback if access token validation threw
+    }
+  }
+
+  const cookieStore = await cookies();
+  const refreshToken = cookieStore.get(REFRESH_TOKEN_COOKIE_NAME)?.value;
+  if (!refreshToken) {
     return null;
   }
 
   try {
-    const response = await backendRequest("/auth/me", {}, token);
-    if (!response.ok) {
+    const refreshResponse = await backendRequest("/auth/refresh", {
+      method: "POST",
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!refreshResponse.ok) {
       return null;
     }
-    return (await response.json()) as AuthUser;
+    const tokens: unknown = await refreshResponse.json();
+    if (!isTokenPairResponse(tokens)) {
+      return null;
+    }
+
+    try {
+      cookieStore.set(
+        ACCESS_TOKEN_COOKIE_NAME,
+        tokens.access_token,
+        authCookieOptions(tokens.access_expires_at),
+      );
+      cookieStore.set(
+        REFRESH_TOKEN_COOKIE_NAME,
+        tokens.refresh_token,
+        authCookieOptions(tokens.refresh_expires_at),
+      );
+    } catch {
+      // In Server Components rendering phase, cookies cannot be directly mutated.
+      // The session will be synced on the next proxy request boundary.
+    }
+
+    const userResponse = await backendRequest("/auth/me", {}, tokens.access_token);
+    if (!userResponse.ok) {
+      return null;
+    }
+    return (await userResponse.json()) as AuthUser;
   } catch {
     return null;
   }

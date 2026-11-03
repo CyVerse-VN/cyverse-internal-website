@@ -19,6 +19,7 @@ from app.tools.threads.errors import ThreadsCancelled, ThreadsError
 from app.tools.threads.pipeline import CancellationCallback, ProgressCallback, SnapshotCallback
 from app.tools.threads.repository import ThreadsRepository
 from app.tools.threads.schemas import ThreadsResult
+from app.tools.threads.service import ThreadsService
 from app.tools.threads.tool import ThreadsTool
 
 logger = logging.getLogger(__name__)
@@ -133,6 +134,7 @@ class ThreadsWorker:
                     try:
                         async with async_session_factory() as session:
                             await ThreadsRepository(session).recover_interrupted()
+                            await ThreadsService(ThreadsRepository(session), self.config).restore_sessions_from_db()
                         while True:
                             await connection.execute(text("SELECT 1"))
                             await connection.commit()
@@ -152,6 +154,7 @@ class ThreadsWorker:
             await asyncio.sleep(self.config.worker_restart_seconds)
 
     async def _progress(self, run_id: UUID, stage: str, value: float) -> None:
+        logger.info("Threads run %s stage=%s progress=%.2f", run_id, stage, value)
         async with async_session_factory() as session:
             await ThreadsRepository(session).progress(run_id, stage, value)
 
@@ -169,7 +172,8 @@ class ThreadsWorker:
             httpx.AsyncClient(follow_redirects=False) as client,
         ):
             return await ThreadsArtifacts(
-                ThreadsRepository(session), CloudinaryTextStore(cloudinary_config, client)
+                ThreadsRepository(session), CloudinaryTextStore(cloudinary_config, client),
+                archive_enabled=self.config.txt_archive_enabled,
             ).run_once()
 
     async def _monitor(

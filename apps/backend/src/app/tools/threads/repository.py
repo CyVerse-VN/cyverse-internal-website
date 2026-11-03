@@ -346,7 +346,13 @@ class ThreadsRepository:
         snapshot.next_storage_attempt_at = None
         await self.session.commit()
 
-    async def next_storage_run(self) -> UUID | None:
+    async def next_storage_run(self, *, include_archives: bool = True) -> UUID | None:
+        needs_storage = ThreadsResultRecord.deletion_requested.is_(True)
+        if include_archives:
+            needs_storage = or_(
+                needs_storage,
+                (ToolRun.status != "cancelled") & (ThreadsResultRecord.archive_status != "ready"),
+            )
         return await self.session.scalar(
             select(ThreadsResultRecord.run_id)
             .join(
@@ -360,13 +366,7 @@ class ThreadsRepository:
                     ThreadsResultRecord.next_storage_attempt_at.is_(None),
                     ThreadsResultRecord.next_storage_attempt_at <= utc_now(),
                 ),
-                or_(
-                    ThreadsResultRecord.deletion_requested.is_(True),
-                    (
-                        (ToolRun.status != "cancelled")
-                        & (ThreadsResultRecord.archive_status != "ready")
-                    ),
-                ),
+                needs_storage,
             )
             .order_by(ThreadsResultRecord.deletion_requested.desc(), ToolRun.created_at)
             .limit(1)

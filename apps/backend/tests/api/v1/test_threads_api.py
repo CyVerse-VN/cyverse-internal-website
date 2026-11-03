@@ -110,7 +110,9 @@ def test_safe_domain_errors_and_result_exports() -> None:
     )
     exported = client.get(f"/api/v1/tools/threads/runs/{run.id}/export?format=json")
     assert exported.status_code == 200
-    assert exported.json()["keywords"] == ["travel"]
+    assert exported.json()["result"]["keywords"] == ["travel"]
+    assert exported.json()["request"]["query"] == "travel tips"
+    assert exported.json()["id"] == str(run.id)
     assert "attachment" in exported.headers["content-disposition"]
     text = client.get(f"/api/v1/tools/threads/runs/{run.id}/export?format=txt")
     assert text.status_code == 200

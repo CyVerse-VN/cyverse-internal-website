@@ -13,7 +13,6 @@ import {
   Plus,
   RotateCcw,
   Settings,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -554,10 +553,11 @@ export function ThreadsTravelForm({
               {selectedCount} từ khóa
             </strong>
           </span>
-          <div className={styles.badgePillDedup}>
-            <ShieldCheck size={13} />
-            <span>Chống trùng lặp bài viết luôn bật (Active)</span>
-          </div>
+          <label className={styles.toggle}>
+            <input type="checkbox" checked={parameters.check_duplicate}
+              onChange={(event) => onChange({ check_duplicate: event.target.checked })} />
+            <span>Exclude posts from my previous sessions</span>
+          </label>
         </div>
       </section>
 
@@ -899,19 +899,6 @@ export function ThreadsTravelForm({
               </div>
               <small className={styles.hint}>{t("threads.maxAccountsHint")}</small>
             </div>
-
-            {/* Use Proxy */}
-            <label className={styles.toggle}>
-              <input
-                type="checkbox"
-                checked={parameters.use_proxy}
-                onChange={(event) => onChange({ use_proxy: event.target.checked })}
-              />
-              <span>
-                <strong>{t("threads.useProxyLabel")}</strong>
-                <small>{t("threads.useProxyHint")}</small>
-              </span>
-            </label>
           </div>
         )}
       </section>
@@ -1005,7 +992,7 @@ export function ThreadsTravelForm({
         </p>
       )}
       <p className={styles.formFootnote}>
-        Các bài viết được tự động đối chiếu ID và URL để lọc trùng lặp hoàn toàn.
+        Duplicate posts within this collection are merged by ID or URL.
       </p>
 
       <ImportSessionModal

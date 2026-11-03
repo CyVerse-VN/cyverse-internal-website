@@ -215,7 +215,8 @@ async def export_threads_run(
     run = await service.export(run_id, user)
     assert run.result is not None
     if format == "json":
-        content, media_type = run.result.model_dump_json(indent=2), "application/json"
+        content = run.model_dump_json(indent=2)
+        media_type = "application/json"
     else:
         content, media_type = render_text(run), "text/plain; charset=utf-8"
     return Response(

@@ -71,6 +71,7 @@ export const threadsRunSchema = z.object({
 export const threadsConfigSchema = z.object({
   enabled: z.boolean(), accounts_ready: z.boolean(), ai_available: z.boolean(),
   cloudinary_ready: z.boolean(),
+  txt_archive_enabled: z.boolean().default(false),
   defaults: threadsParametersSchema, limits: z.record(z.string(), z.number()),
 });
 

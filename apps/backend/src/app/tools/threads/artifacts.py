@@ -11,12 +11,13 @@ logger = logging.getLogger(__name__)
 
 
 class ThreadsArtifacts:
-    def __init__(self, repository: ThreadsRepository, store: TextStore) -> None:
+    def __init__(self, repository: ThreadsRepository, store: TextStore, *, archive_enabled: bool = True) -> None:
         self.repository = repository
         self.store = store
+        self.archive_enabled = archive_enabled
 
     async def run_once(self) -> bool:
-        run_id = await self.repository.next_storage_run()
+        run_id = await self.repository.next_storage_run(include_archives=self.archive_enabled)
         if run_id is None:
             return False
         run = await self.repository.get(run_id, None)
@@ -25,6 +26,8 @@ class ThreadsArtifacts:
         try:
             if snapshot.deletion_requested:
                 logger.info("Executing artifact deletion for run %s", run_id)
+                if (snapshot.archive_public_id or snapshot.legacy_archive_public_id) and not self.store.available:
+                    raise ThreadsError("CLOUDINARY_NOT_CONFIGURED", "Cloud cleanup requires Cloudinary configuration.", 503)
                 if self.store.available:
                     if snapshot.archive_public_id:
                         await self.store.delete(snapshot.archive_public_id)

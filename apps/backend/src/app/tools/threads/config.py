@@ -20,6 +20,7 @@ class ThreadsAccount(BaseModel):
 class ThreadsConfig(BaseSettings):
     enabled: bool = False
     embedded_worker: bool = True
+    txt_archive_enabled: bool = False
     accounts: list[ThreadsAccount] = Field(default_factory=list, max_length=10, repr=False)
     anonymous: bool = False
     sessions_dir: Path = BACKEND_ROOT / ".local" / "threads" / "sessions"

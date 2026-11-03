@@ -1,5 +1,27 @@
 # Deployment Guide
 
+## Render Free: bộ nhớ và kết nối Threads
+
+`THREADS_TXT_ARCHIVE_ENABLED=false` tắt upload TXT tự động; khi cần bật lại, cấu hình
+biến thành `true` và restart backend. Các TXT đã upload không tự bị xóa.
+
+Trong Threads, chọn số tài khoản ở **Advanced settings** cho từng lượt chạy, cả trên
+Render lẫn local. Chọn 1 tài khoản trên Render Free để giảm sử dụng RAM; chọn nhiều hơn
+sẽ mở thêm browser context và có thể vượt giới hạn 512 MB. Worker xử lý từng lượt
+Threads tuần tự. Crawler đã chặn ảnh, video và font;
+giới hạn dữ liệu phản hồi có thể khiến một số kết quả dài không được thu thập đủ.
+
+Theo dõi Memory và log OOM trên Render khi thử tải thực tế. Bắt đầu với ít bài viết,
+tắt comments hoặc đặt giới hạn thấp, tránh chạy đồng thời các tác vụ nặng khác. 512 MB
+không bảo đảm đủ cho mọi trang Threads và khối lượng dữ liệu. Web Service Free có thể
+sleep khi không có request, nên công việc nền không được bảo đảm tiếp tục trong lúc đó.
+
+Với TiDB Cloud, giữ URL kết nối trực tiếp và TLS theo hướng dẫn nhà cung cấp. Chỉ dùng
+Render Internal Database URL nếu database thực sự được lưu trên Render và hỗ trợ kết nối
+nội bộ cùng khu vực. Worker dùng session-level PostgreSQL advisory lock, vì vậy không
+dùng transaction pooler cho kết nối này. Khi mất kết nối giữ lock, worker dừng lượt đang
+chạy và khôi phục trạng thái khi kết nối lại để tránh xử lý trùng.
+
 Tài liệu hướng dẫn triển khai toàn diện hệ sinh thái CyVerse Internal Tools với kiến trúc phân tán:
 - **Frontend (`apps/web`)**: Triển khai trên **Vercel** (Next.js 16+ Turbopack).
 - **Backend (`apps/backend`)**: Triển khai trên **Render** (FastAPI, Python 3.13, Uvicorn, uv).

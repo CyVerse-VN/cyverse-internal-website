@@ -5,6 +5,7 @@ import time
 from collections.abc import Awaitable, Callable
 
 import httpx
+from playwright.async_api import Error as PlaywrightError
 
 from app.tools.threads.ai import GroqThreadsAI, ThreadsAI
 from app.tools.threads.config import ThreadsConfig
@@ -62,6 +63,7 @@ class ThreadsPipeline:
     ) -> ThreadsResult:
         started = time.monotonic()
         warnings: list[str] = []
+        search_attempts: list[dict[str, object]] = []
         logger.info(
             "Starting Threads pipeline (query: %r, expand_query: %s, pre_filter: %s, comments: %s, curate: %s)",
             request.query,
@@ -113,6 +115,8 @@ class ThreadsPipeline:
                 duplicate_count=duplicate_count,
                 duration_seconds=round(time.monotonic() - started, 2),
                 warnings=warnings.copy(),
+                search_attempts=search_attempts.copy(),
+                schema_version=2,
             )
 
         async def persist(selected_posts: list[ThreadsPost]) -> None:
@@ -149,12 +153,15 @@ class ThreadsPipeline:
                         s_type,
                         on_warning=capture_warning,
                     )
+                    search_attempts.append({"keyword": keyword, "mode": s_type, "status": "completed", "posts": len(batch)})
                 except ThreadsCancelled:
                     raise
-                except Exception as exc:
-                    warn_msg = f"Keyword {index + 1} ({keyword}) in mode '{s_type}' search failed: {exc}"
+                except (ThreadsError, PlaywrightError, OSError) as exc:
+                    code = exc.code if isinstance(exc, ThreadsError) else "THREADS_SEARCH_ERROR"
+                    search_attempts.append({"keyword": keyword, "mode": s_type, "status": "failed", "error_code": code})
+                    warn_msg = f"Keyword {index + 1} ({keyword}) in mode '{s_type}' search failed ({code})."
                     warnings.append(warn_msg)
-                    logger.warning(warn_msg, exc_info=True)
+                    logger.warning("%s", warn_msg)
                     batch = []
                 for post in batch:
                     if request.check_duplicate and post.post_id in existing_ids:
@@ -175,6 +182,8 @@ class ThreadsPipeline:
             # Persist intermediate snapshot to database after every keyword finishes
             await persist(list(posts.values()))
             await pause()
+        if search_attempts and all(attempt["status"] == "failed" for attempt in search_attempts):
+            raise ThreadsError("THREADS_SEARCH_FAILED", "All Threads searches failed.", 502)
         all_posts = list(posts.values())
         logger.info(
             "Completed search across %d keywords: collected %d unique posts",
@@ -220,8 +229,9 @@ class ThreadsPipeline:
                     )
                     raise
                 selected.update(batch_selected)
-                # Rejected posts never enter PostgreSQL when relevance filtering is enabled.
-                await persist([post for post in all_posts if post.post_id in selected])
+                for post in batch:
+                    post.filter_selected = post.post_id in batch_selected
+                await persist(all_posts)
                 await pause()
             candidates = [post for post in all_posts if post.post_id in selected]
             logger.info(
@@ -230,7 +240,7 @@ class ThreadsPipeline:
                 len(all_posts),
             )
 
-        await persist(candidates)
+        await persist(all_posts)
 
         if request.include_comments:
             filtered_candidates = (
@@ -263,7 +273,7 @@ class ThreadsPipeline:
                         exc,
                     )
                     raise
-                await persist(candidates)
+                await persist(all_posts)
                 await pause()
 
         if request.curate:
@@ -283,10 +293,10 @@ class ThreadsPipeline:
                     raise
                 if post.ai_analysis.is_relevant:
                     curated.append(post.post_id)
-                await persist(candidates)
+                await persist(all_posts)
             logger.info("AI curation completed: %d curated relevant posts", len(curated))
         await checkpoint("saving", 0.98)
-        result = snapshot(candidates)
+        result = snapshot(all_posts)
         logger.info(
             "Pipeline completed in %.2fs: %d posts, %d comments, %d curated, %d warnings",
             result.duration_seconds,

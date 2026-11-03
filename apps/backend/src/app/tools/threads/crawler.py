@@ -6,6 +6,7 @@ import re
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Protocol
 from urllib.parse import quote, urlsplit
 
@@ -28,6 +29,7 @@ from app.tools.threads.session import inspect_session_file
 
 ALLOWED_DOMAINS = ("threads.com", "threads.net", "instagram.com", "cdninstagram.com", "fbcdn.net")
 MAX_PAYLOAD_BYTES = 5_000_000
+MAX_CAPTURED_BYTES = 8_000_000
 SearchWarning = Callable[[str], None]
 logger = logging.getLogger(__name__)
 
@@ -131,29 +133,38 @@ class PlaywrightThreadsCrawler:
         payloads: list[object] = []
         tasks: set[asyncio.Task[None]] = set()
         received_bytes = 0
+        skipped = 0
 
         async def capture(response: Response) -> None:
-            nonlocal received_bytes
+            nonlocal received_bytes, skipped
             if "graphql" not in response.url and "json" not in response.headers.get(
                 "content-type", ""
             ):
                 return
-            if len(payloads) >= 100 or received_bytes >= 20_000_000:
+            if len(payloads) >= 100 or received_bytes >= MAX_CAPTURED_BYTES:
+                skipped += 1
                 return
             try:
                 length = int(response.headers.get("content-length", "0"))
                 if length > MAX_PAYLOAD_BYTES:
+                    skipped += 1
                     return
                 body = await response.body()
                 received_bytes += len(body)
-                if len(body) <= MAX_PAYLOAD_BYTES and received_bytes <= 20_000_000:
+                if len(body) <= MAX_PAYLOAD_BYTES and received_bytes <= MAX_CAPTURED_BYTES:
                     payloads.append(json.loads(body))
+                else:
+                    skipped += 1
             except (PlaywrightError, ValueError, UnicodeDecodeError):
                 # Non-JSON responses and responses aborted by media blocking are expected.
                 return
 
         def on_response(response: Response) -> None:
-            if len(tasks) >= 20:
+            nonlocal skipped
+            if "graphql" not in response.url and "json" not in response.headers.get("content-type", ""):
+                return
+            if len(tasks) >= 2:
+                skipped += 1
                 return
             task = asyncio.create_task(capture(response))
             tasks.add(task)
@@ -186,6 +197,8 @@ class PlaywrightThreadsCrawler:
             for task in list(tasks):
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            if skipped:
+                logger.warning("Threads skipped %d responses due to capture limits", skipped)
 
     async def _scripts(self, page: Page) -> list[object]:
         texts = await page.locator('script[type="application/json"]').evaluate_all(
@@ -237,6 +250,8 @@ class PlaywrightThreadsCrawler:
                                 "THREADS_INVALID_DATA", "Threads returned invalid post data.", 502
                             ) from exc
                         for post in batch:
+                            if post.collected_at is None:
+                                post.collected_at = datetime.now(UTC)
                             posts.setdefault(post.post_id, post)
                         has_next = search_has_next_page(captured)
                         if has_next is None:
@@ -327,6 +342,7 @@ class PlaywrightThreadsCrawler:
                     for round_index in range(max_rounds):
                         before = len(comments)
                         for comment in extract_comments(captured + await self._scripts(page)):
+                            comment.collected_at = datetime.now(UTC)
                             comments.setdefault(comment.id, comment)
                         # SSR pages can omit reply payloads; preserve their text with unknown parents.
                         dom = await page.locator('div[data-pressable-container="true"]').evaluate_all(
@@ -368,7 +384,10 @@ class PlaywrightThreadsCrawler:
                                 "dom_" + hashlib.sha256(f"{username}:{text}".encode()).hexdigest()[:20]
                             )
                             comments.setdefault(
-                                identifier, ThreadsComment(id=identifier, username=username, text=text)
+                                identifier, ThreadsComment(
+                                    id=identifier, username=username, text=text,
+                                    source="dom", collected_at=datetime.now(UTC),
+                                )
                             )
                             seen.add(fingerprint)
                         idle = idle + 1 if len(comments) == before else 0
@@ -445,7 +464,7 @@ async def open_crawler(
 
     use_accounts = valid_accounts
     if max_accounts > 0:
-        use_accounts = valid_accounts[:max_accounts]
+        use_accounts = use_accounts[:max_accounts]
 
     try:
         async with async_playwright() as playwright:

@@ -1,5 +1,26 @@
 # Threads Scraper Tool
 
+JSON export phiên bản 2 chứa run ID, request, trạng thái, thời gian và `result`.
+`result.search_attempts` ghi kết quả từng keyword/mode; mọi lượt tìm kiếm lỗi sẽ làm job
+thất bại, thay vì hoàn thành với kết quả rỗng. Bài và bình luận giữ `source_data` từ record
+nguồn khi có thể, `collected_at`, và `source_data_status`. Source record loại các trường xác
+thực phổ biến mà không giới hạn kích thước từng record; đây không phải bản sao toàn bộ network response.
+Comment DOM có `source=dom`; parent có thể được suy luận (`parent_inferred`). Dữ liệu cũ
+không có metadata này và được đánh dấu `unknown`. Các bài không qua AI pre-filter vẫn được
+giữ trong kết quả với `filter_selected=false`; chỉ bài được chọn được xử lý comments/AI.
+
+Trong Travel & Places, lựa chọn **Exclude posts from my previous sessions** quyết định có
+bỏ bài đã lưu trong các session trước của cùng user không. Dù tắt lựa chọn này, bài trùng
+giữa các keyword trong cùng lượt vẫn được gộp. Log INFO và lỗi ghi ra stdout: xem terminal
+khi chạy local hoặc mục Logs của backend trên Render; log có thể chứa query và URL bài.
+
+`THREADS_TXT_ARCHIVE_ENABLED=false` (mặc định) tắt tự động lưu TXT lên Cloudinary; JSON
+vẫn lưu trong database và có thể tải TXT theo yêu cầu. Các TXT đã lưu trước đây không bị
+xóa tự động; khi xóa session, worker vẫn xóa các cloud asset cũ trước khi xóa database.
+Đặt biến thành `true` và khởi động lại worker để bật lại archive và xử lý hàng đợi cũ.
+Giới hạn capture của trình duyệt vẫn có thể bỏ sót response; record nguồn đã thu thập
+được không còn bị bỏ chỉ vì vượt 32 KB. Dataset lớn có thể vượt bộ nhớ hoặc quota database.
+
 Backend tích hợp luồng trong `test/meta-threads-scraper`: mở rộng từ khóa bằng Groq,
 tìm bài Threads, khử trùng lặp, lọc sơ bộ, lấy bình luận phân cấp và thẩm định nội dung.
 Code runtime nằm hoàn toàn trong `apps/backend/src/app/tools/threads`, không import hay
@@ -269,8 +290,8 @@ Request/lifecycle lưu trong `tool_runs`. Migration `20261101_0006` thêm `threa
 (summary một collection), `threads_posts` (snapshot từng bài) và `threads_comments`
 (snapshot bình luận, giữ parent ID). Migration `20261101_0007` thêm metadata chia sẻ,
 counts và trạng thái archive/cleanup bền vững. Bản ghi session được tạo ngay khi queue.
-Không bật pre-filter thì checkpoint sau mỗi từ khóa; bật pre-filter thì chỉ checkpoint
-các bài đã được AI chọn sau từng batch. Bài và ID được commit trước khi lấy comments.
+Checkpoint được ghi sau mỗi từ khóa và mỗi batch pre-filter, giữ cả bài không được chọn.
+Bài và ID được commit trước khi lấy comments.
 Cứ mỗi khi chạy xong một từ khóa, hệ thống tự động lưu (commit) snapshot dữ liệu các bài viết thu được vào PostgreSQL. Cơ chế này đảm bảo dữ liệu không bị mất sạch nếu gặp lỗi kết nối hoặc gián đoạn giữa chừng. Tính năng xuất file (JSON và TXT) chỉ mở khóa cho người dùng khi phiên cào đã dừng hoặc hoàn tất (`completed`, `failed`), giúp tối ưu tài nguyên lưu trữ và đảm bảo file xuất ra có đầy đủ tổng hợp toàn bộ bài viết đã cào.
 
 ### Cơ chế Hủy và Xóa Session (Dừng ngay & Xóa sạch dữ liệu)

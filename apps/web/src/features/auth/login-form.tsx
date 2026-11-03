@@ -42,7 +42,7 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
             spellCheck={false}
             minLength={3}
             maxLength={64}
-            pattern="[A-Za-z0-9._-]+"
+            pattern="[a-zA-Z0-9_\-\.]+"
             placeholder={t("auth.usernamePlaceholder")}
             aria-describedby="login-username-rule"
             required

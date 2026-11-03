@@ -24,7 +24,10 @@ download kiểm tra cùng quyền. Consumer giữ hàng đợi archive/cleanup: 
 asset authenticated trên Cloudinary cho mỗi session sau khi job dừng, retry độc lập khi
 cloud lỗi. Delete dừng pipeline, xóa cloud rồi hard-delete database bằng cascade. Consumer
 có advisory lock riêng, có thể chạy trong API
-lifespan hoặc qua CLI. Cấu hình dùng chung `apps/backend/.env`; browser sessions nằm trong
+lifespan hoặc qua CLI. JSON export chứa run metadata và result; mỗi bài/bình luận có thể
+chứa source record đã loại các trường xác thực phổ biến, cùng metadata
+thu thập. Không lưu toàn bộ network response. Worker khôi phục account sessions trước khi
+nhận job. Cấu hình dùng chung `apps/backend/.env`; browser sessions nằm trong
 backend `.local/threads/sessions`. Xem [Threads tool](tools/threads.md).
 
 ## AI Research data flow

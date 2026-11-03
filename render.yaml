@@ -66,6 +66,8 @@ services:
         value: "true"
       - key: THREADS_EMBEDDED_WORKER
         value: "true"
+      - key: THREADS_TXT_ARCHIVE_ENABLED
+        value: "false"
       - key: THREADS_ANONYMOUS
         value: "true"
       - key: THREADS_ACCOUNTS

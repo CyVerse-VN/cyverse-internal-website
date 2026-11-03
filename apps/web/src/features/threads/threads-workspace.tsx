@@ -113,7 +113,7 @@ export function ThreadsWorkspace() {
           setActiveTab("scraper");
         }
         setRun(item); setHistory((current) => mergeRun(current, item)); setDetailError(null);
-        if (isActiveRun(item.status) || item.deletion_requested || item.archive_status !== "ready") {
+        if (isActiveRun(item.status) || item.deletion_requested || (config?.txt_archive_enabled && item.archive_status !== "ready")) {
           timer = setTimeout(poll, isActiveRun(item.status) || item.deletion_requested ? 2000 : 10000);
         }
       } catch (failure) {
@@ -131,7 +131,7 @@ export function ThreadsWorkspace() {
     }
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [selectedId, detailRevision]);
+  }, [selectedId, detailRevision, config?.txt_archive_enabled]);
 
   const hasRunningSession = useMemo(
     () => history.some((item) => item.status === "running"),
@@ -252,7 +252,6 @@ export function ThreadsWorkspace() {
       query: travelPrompt,
       keywords: travelKeywords,
       expand_query: false,
-      check_duplicate: true,
       visibility: "public",
     });
     if (!validated.success) {
@@ -391,7 +390,7 @@ export function ThreadsWorkspace() {
             {settingsNotice}
           </p>
         )}
-        {config && !config.cloudinary_ready && (
+        {config && config.txt_archive_enabled && !config.cloudinary_ready && (
           <p className={styles.notice}>
             Cloudinary is not configured. Collections are saved in the database and TXT downloads
             are available. Cloud archiving will retry after configuration.
@@ -603,7 +602,7 @@ export function ThreadsWorkspace() {
                         </p>
                       </div>
                     </div>
-                    <ThreadsSessionControls key={run.id} run={run} onUpdated={updateRun} />
+                    <ThreadsSessionControls key={run.id} run={run} onUpdated={updateRun} archiveEnabled={config?.txt_archive_enabled ?? false} />
                     {run.status === "queued" && (
                       <div className={styles.queuePanel} role="status" aria-live="polite">
                         <div className={styles.queuePanelHeader}>

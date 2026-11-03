@@ -9,6 +9,24 @@ from urllib.parse import parse_qs, unquote, urlparse
 from app.tools.threads.schemas import ThreadsComment, ThreadsPost
 
 BASE_URL = "https://www.threads.com"
+SENSITIVE_SOURCE_KEYS = frozenset({"password", "authorization", "cookie", "cookies", "access_token", "refresh_token", "sessionid", "csrf_token"})
+
+
+def source_record(value: dict[str, object]) -> dict[str, object]:
+    """Preserve source records while excluding common authentication fields."""
+    def clean(item: object) -> object:
+        if isinstance(item, dict):
+            return {key: clean(child) for key, child in item.items()
+                    if isinstance(key, str) and key.lower() not in SENSITIVE_SOURCE_KEYS}
+        if isinstance(item, list):
+            return [clean(child) for child in item]
+        return item
+
+    cleaned = clean(value)
+    assert isinstance(cleaned, dict)
+    return cleaned
+
+
 POST_HINT_KEYS = frozenset(
     {
         "id",
@@ -384,6 +402,7 @@ def extract_search_posts(sources: list[object], keyword: str) -> list[ThreadsPos
                 if not normalized or not normalized["username"] or not normalized["permalink"]:
                     continue
                 media = normalized["media"]
+                source_data = source_record(raw)
                 post = ThreadsPost.model_validate(
                     {
                         "post_id": normalized["id"],
@@ -397,6 +416,8 @@ def extract_search_posts(sources: list[object], keyword: str) -> list[ThreadsPos
                         "images": [entry["url"] for entry in media if entry["type"] == "image"],
                         "videos": [entry["url"] for entry in media if entry["type"] == "video"],
                         "search_keywords": [keyword],
+                        "source_data": source_data,
+                        "source_data_status": "captured" if source_data is not None else "omitted",
                     }
                 )
                 posts.setdefault(post.post_id, post)
@@ -445,14 +466,19 @@ def extract_comments(sources: list[object]) -> list[ThreadsComment]:
         parent = info.get("reply_to_id") or info.get("replied_to_post_id")
         reply_to = info.get("reply_to_author")
         reply_username = reply_to.get("username") if isinstance(reply_to, dict) else reply_to
+        source_data = source_record(item)
         comment = ThreadsComment(
             id=identifier,
             username=username,
-            text=" ".join(text.split()),
+            text=text,
             like_count=count(item.get("like_count")),
             depth=depth,
             parent_id=str(parent) if parent else stack[-1].id if stack else None,
             reply_to_username=reply_username if isinstance(reply_username, str) else None,
+            source="structured",
+            parent_inferred=not bool(parent) and bool(stack),
+            source_data=source_data,
+            source_data_status="captured" if source_data is not None else "omitted",
         )
         comments[identifier] = comment
         stack.append(comment)

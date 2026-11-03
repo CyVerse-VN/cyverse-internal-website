@@ -483,19 +483,6 @@ export function ThreadsForm({
               </div>
               <small className={styles.hint}>{t("threads.maxAccountsHint")}</small>
             </div>
-
-            {/* Use Proxy */}
-            <label className={styles.toggle}>
-              <input
-                type="checkbox"
-                checked={parameters.use_proxy}
-                onChange={(event) => onChange({ use_proxy: event.target.checked })}
-              />
-              <span>
-                <strong>{t("threads.useProxyLabel")}</strong>
-                <small>{t("threads.useProxyHint")}</small>
-              </span>
-            </label>
           </div>
         )}
       </section>

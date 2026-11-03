@@ -65,6 +65,7 @@ class ThreadsConfigResponse(BaseModel):
     accounts_ready: bool
     ai_available: bool
     cloudinary_ready: bool = False
+    txt_archive_enabled: bool = False
     defaults: ThreadsParameters
     limits: dict[str, int]
 
@@ -77,6 +78,11 @@ class ThreadsComment(BaseModel):
     depth: int = Field(default=1, ge=1, le=100)
     reply_to_username: str | None = None
     parent_id: str | None = None
+    source: Literal["structured", "dom", "unknown"] = "unknown"
+    parent_inferred: bool = False
+    collected_at: datetime | None = None
+    source_data: dict[str, object] | None = None
+    source_data_status: Literal["captured", "omitted", "unknown"] = "unknown"
 
 
 class RecommendedPlace(BaseModel):
@@ -110,6 +116,10 @@ class ThreadsPost(BaseModel):
     search_keywords: list[str] = Field(default_factory=list)
     comments: list[ThreadsComment] = Field(default_factory=list)
     ai_analysis: ThreadsAnalysis | None = None
+    collected_at: datetime | None = None
+    source_data: dict[str, object] | None = None
+    source_data_status: Literal["captured", "omitted", "unknown"] = "unknown"
+    filter_selected: bool | None = None
 
 
 class ThreadsResult(BaseModel):
@@ -121,6 +131,8 @@ class ThreadsResult(BaseModel):
     duplicate_count: int = 0
     duration_seconds: float
     warnings: list[str] = Field(default_factory=list)
+    schema_version: int = 1
+    search_attempts: list[dict[str, object]] = Field(default_factory=list)
 
 
 class ThreadsRunResponse(BaseModel):

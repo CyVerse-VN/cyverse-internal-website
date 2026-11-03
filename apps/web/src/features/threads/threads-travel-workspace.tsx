@@ -14,7 +14,6 @@ import {
   ExternalLink,
   MessageSquare,
   ThumbsUp,
-  ShieldCheck,
   Layers,
   Play,
   Square,
@@ -155,7 +154,7 @@ export function ThreadsTravelWorkspace({
     keywords: [],
     max_posts_per_keyword: 50,
     search_type: "both", // Default to both recent and top for comprehensive local search
-    check_duplicate: true, // Permanently active for continuous local search
+    check_duplicate: true,
     include_comments: true,
     max_comment_posts: -1,
     max_comments_per_post: 25,
@@ -323,7 +322,6 @@ export function ThreadsTravelWorkspace({
       ...parameters,
       query: prompt.trim(),
       keywords: activeKws,
-      check_duplicate: true, // Permanent dedup
       visibility: "public" as const,
     };
 
@@ -405,20 +403,12 @@ export function ThreadsTravelWorkspace({
             <Flame size={14} />
             <span>{t("threads.dualModeBadge")}</span>
           </div>
-          <div className={styles.badgePillDedup}>
-            <ShieldCheck size={14} />
-            <span>{t("threads.dedupBadge")}</span>
-          </div>
           <div className={styles.badgePillLive}>
             <Layers size={14} />
             <span>{t("threads.continuousBadge")}</span>
           </div>
         </div>
 
-        <p className={styles.heroDedupNotice}>
-          <ShieldCheck size={16} />
-          <span>{t("threads.dedupNotice")}</span>
-        </p>
       </section>
 
       {/* Main Configuration & Workflow Card (shown when no run is being reviewed or creating new) */}
@@ -680,10 +670,11 @@ export function ThreadsTravelWorkspace({
               </strong>{" "}
               (trên {groups.reduce((acc, g) => acc + g.keywords.length, 0)} từ khóa khả dụng)
             </span>
-            <div className={styles.badgePillDedup}>
-              <ShieldCheck size={13} />
-              <span>Lọc trùng lặp ID &amp; URL tự động</span>
-            </div>
+            <label className={styles.toggle}>
+              <input type="checkbox" checked={parameters.check_duplicate}
+                onChange={(event) => updateParameters({ check_duplicate: event.target.checked })} />
+              <span>Exclude posts from my previous sessions</span>
+            </label>
           </div>
         </div>
 
@@ -1059,19 +1050,6 @@ export function ThreadsTravelWorkspace({
                   </div>
                   <small className={styles.hint}>{t("threads.maxAccountsHint")}</small>
                 </div>
-
-                {/* Proxy */}
-                <label className={styles.toggle}>
-                  <input
-                    type="checkbox"
-                    checked={parameters.use_proxy}
-                    onChange={(e) => updateParameters({ use_proxy: e.target.checked })}
-                  />
-                  <span>
-                    <strong>{t("threads.useProxyLabel")}</strong>
-                    <small>{t("threads.useProxyHint")}</small>
-                  </span>
-                </label>
               </div>
             )}
           </div>
@@ -1160,6 +1138,7 @@ export function ThreadsTravelWorkspace({
             <ThreadsSessionControls
               key={activeRun.id}
               run={activeRun}
+              archiveEnabled={config?.txt_archive_enabled ?? false}
               onUpdated={onRunUpdated}
             />
           )}

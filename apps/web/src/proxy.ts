@@ -17,8 +17,37 @@ function clearAuthCookies(response: NextResponse): NextResponse {
   return response;
 }
 
+function decodeJwtPayload(token: string): { exp?: unknown } | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) {
+      return null;
+    }
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const jsonStr =
+      typeof Buffer !== "undefined"
+        ? Buffer.from(base64, "base64").toString("utf-8")
+        : atob(base64);
+    return JSON.parse(jsonStr) as { exp?: unknown };
+  } catch {
+    return null;
+  }
+}
+
+export function isTokenExpired(token: string | undefined | null): boolean {
+  if (!token) {
+    return true;
+  }
+  const payload = decodeJwtPayload(token);
+  if (payload && typeof payload.exp === "number") {
+    return payload.exp * 1000 <= Date.now() + 30_000;
+  }
+  return false;
+}
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
-  if (request.cookies.has(ACCESS_TOKEN_COOKIE_NAME)) {
+  const accessToken = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)?.value;
+  if (accessToken && !isTokenExpired(accessToken)) {
     return NextResponse.next();
   }
 
@@ -70,6 +99,8 @@ export const config = {
     "/login",
     "/dashboard/:path*",
     "/admin/:path*",
+    "/runs/:path*",
+    "/schedules/:path*",
     "/settings/:path*",
     "/tools/:path*",
     "/api/research/:path*",
