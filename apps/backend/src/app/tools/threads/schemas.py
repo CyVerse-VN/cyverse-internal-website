@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.tools.threads.discovery_schemas import DiscoveryQuery, DiscoveryQueryPlan, PostDiscovery
+from app.tools.threads.discovery_schemas import DiscoveryQueryPlan, PostDiscovery
 from app.tools.threads.poi_schemas import POICandidate, POIMention
 
 

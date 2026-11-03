@@ -157,6 +157,7 @@ def test_comment_targets_use_discussion_score_and_ignore_reply_gate() -> None:
 async def test_jev_triage_provider_classifies_decisions_response() -> None:
     import httpx
     from pydantic import SecretStr
+
     from app.tools.threads.providers.jev_triage import JevTriageProvider
 
     mock_response = httpx.Response(
@@ -190,7 +191,8 @@ async def test_jev_triage_provider_classifies_decisions_response() -> None:
 
 
 @pytest.mark.asyncio
-async def test_jev_request_falls_back_to_groq_with_warning() -> None:
+async def test_jev_request_falls_back_to_groq_with_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.tools.threads.discovery.is_jev_configured", lambda: False)
     groq = SimpleNamespace(name="groq", classify=AsyncMock(return_value={"a": triage()}))
     warnings: list[str] = []
     primary, fallback = select_triage_providers("jev", groq, warnings)
@@ -368,12 +370,11 @@ from app.tools.threads.evidence_validator import (
     find_evidence_span,
     is_grounded_attribute,
 )
-from app.tools.threads.poi_schemas import POIClaim, POIMention
+from app.tools.threads.feedback import compute_discovery_feedback
 from app.tools.threads.poi_resolver import (
     resolve_poi_mentions,
-    normalize_poi_name,
 )
-from app.tools.threads.feedback import compute_discovery_feedback
+from app.tools.threads.poi_schemas import POIClaim, POIMention
 
 
 def test_comment_cleaning_and_dom_deduplication() -> None:

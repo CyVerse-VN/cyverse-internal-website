@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useLanguage } from "@/lib/i18n/context";
 import { ImportSessionModal } from "./import-session-modal";
 import { threadsApi } from "./api";
@@ -558,6 +559,144 @@ export function ThreadsTravelForm({
         </div>
         <CrossSessionDedup enabled={parameters.check_duplicate}
           onChange={(check_duplicate) => onChange({ check_duplicate })} />
+      </section>
+
+      {/* Discovery Engine V2 Options */}
+      <section className={styles.formSection} aria-labelledby="travel-discovery-label">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 id="travel-discovery-label" style={{ margin: 0, display: "flex", alignItems: "center", gap: 6 }}>
+            <Compass size={15} />
+            {language === "vi" ? "Chế độ Discovery Engine V2" : "Discovery Engine V2 Mode"}
+          </h3>
+          <Badge variant={parameters.discovery_mode === "evidence_poi" ? "default" : "outline"}>
+            {parameters.discovery_mode === "evidence_poi" ? "Active" : "Legacy"}
+          </Badge>
+        </div>
+
+        <div className={styles.segmentedGroup}>
+          <div className={styles.segmentedControl}>
+            <button
+              type="button"
+              className={styles.segmentedButton}
+              data-active={parameters.discovery_mode === "legacy"}
+              onClick={() => onChange({ discovery_mode: "legacy" })}
+            >
+              Legacy Scraper
+            </button>
+            <button
+              type="button"
+              className={styles.segmentedButton}
+              data-active={parameters.discovery_mode === "evidence_poi"}
+              onClick={() => onChange({ discovery_mode: "evidence_poi" })}
+            >
+              POI Discovery Engine
+            </button>
+          </div>
+          <small className={styles.hint}>
+            {parameters.discovery_mode === "evidence_poi"
+              ? (language === "vi"
+                ? "Khám phá địa điểm từ thảo luận, phân loại AI Triage, trích xuất POI có bằng chứng và entity resolution."
+                : "Discover places from discussions, AI triage classification, grounded POI extraction, and entity resolution.")
+              : (language === "vi"
+                ? "Chế độ cào bài viết truyền thống theo từ khóa và bộ lọc sơ bộ."
+                : "Traditional post scraper by keywords and preliminary filters.")}
+          </small>
+
+          {parameters.discovery_mode === "evidence_poi" && (
+            <div style={{ display: "grid", gap: 10, padding: 12, background: "rgba(125, 140, 160, 0.08)", borderRadius: 8, marginTop: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  {language === "vi" ? "Query Planning (Đa góc nhìn):" : "Query Planning (Multi-perspective):"}
+                </span>
+                <div className={styles.segmentedControl} style={{ maxWidth: 160 }}>
+                  <button
+                    type="button"
+                    className={styles.segmentedButton}
+                    data-active={parameters.query_planning}
+                    onClick={() => onChange({ query_planning: true, discovery_query_planning: true })}
+                  >
+                    {language === "vi" ? "Bật" : "On"}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.segmentedButton}
+                    data-active={!parameters.query_planning}
+                    onClick={() => onChange({ query_planning: false, discovery_query_planning: false })}
+                  >
+                    {language === "vi" ? "Tắt" : "Off"}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>AI Triage Provider:</span>
+                <div className={styles.segmentedControl} style={{ maxWidth: 180 }}>
+                  <button
+                    type="button"
+                    className={styles.segmentedButton}
+                    data-active={parameters.triage_provider === "groq"}
+                    onClick={() => onChange({ triage_provider: "groq" })}
+                  >
+                    Groq (Baseline)
+                  </button>
+                  {config?.triage_providers?.includes("jev") && (
+                    <button
+                      type="button"
+                      className={styles.segmentedButton}
+                      data-active={parameters.triage_provider === "jev"}
+                      onClick={() => onChange({ triage_provider: "jev" })}
+                    >
+                      Jev AI
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  {language === "vi" ? "Ngân sách cào bình luận:" : "Comment Scraping Budget:"}
+                </span>
+                <div className={styles.segmentedControl} style={{ maxWidth: 220 }}>
+                  {[10, 20, 30, 50].map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      className={styles.segmentedButton}
+                      data-active={parameters.discovery_comment_posts === b}
+                      onClick={() => onChange({ discovery_comment_posts: b, discovery_comment_budget: b })}
+                    >
+                      {b} {language === "vi" ? "bài" : "posts"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  {language === "vi" ? "Giữ keyword thủ công làm seed:" : "Keep Manual Seeds:"}
+                </span>
+                <div className={styles.segmentedControl} style={{ maxWidth: 180 }}>
+                  <button
+                    type="button"
+                    className={styles.segmentedButton}
+                    data-active={parameters.use_manual_keywords}
+                    onClick={() => onChange({ use_manual_keywords: true })}
+                  >
+                    {language === "vi" ? "Giữ seeds" : "Keep seeds"}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.segmentedButton}
+                    data-active={!parameters.use_manual_keywords}
+                    onClick={() => onChange({ use_manual_keywords: false })}
+                  >
+                    {language === "vi" ? "Chỉ AI" : "AI only"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </section>
 
       {/* Step 4: Search Order & Posts per Keyword */}

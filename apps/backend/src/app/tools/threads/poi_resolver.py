@@ -40,11 +40,8 @@ def are_distinct_branches(m1: POIMention, m2: POIMention) -> bool:
     if not a1 or not a2:
         return False
     # If both have explicit locations and similarity is low, treat as separate branches
-    if compute_similarity(a1, a2) < 0.4:
-        # Check if one is a substring of the other (e.g. "Hoàng Sa" in "725 Hoàng Sa, Q.3")
-        if a1 not in a2 and a2 not in a1:
-            return True
-    return False
+    # Check if one is a substring of the other (e.g. "Hoàng Sa" in "725 Hoàng Sa, Q.3")
+    return bool(compute_similarity(a1, a2) < 0.4 and (a1 not in a2 and a2 not in a1))
 
 
 def resolve_poi_mentions(

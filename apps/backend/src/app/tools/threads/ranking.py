@@ -29,10 +29,11 @@ COMMENT_WEIGHTS = RankingWeights(discussion=3.0, direct=0.5)
 EXTRACTION_WEIGHTS = RankingWeights(discussion=1.0, direct=2.0)
 
 _REPLY_CAP = 100
+_DEFAULT_WEIGHTS = RankingWeights()
 
 
 def score_post(
-    post: ThreadsPost, triage: PostTriage, weights: RankingWeights = RankingWeights()
+    post: ThreadsPost, triage: PostTriage, weights: RankingWeights = _DEFAULT_WEIGHTS
 ) -> float:
     geo = {"yes": weights.geo_yes, "uncertain": weights.geo_uncertain, "no": weights.geo_no}[
         triage.geo_match
@@ -55,7 +56,7 @@ def score_post(
 def rank_posts(
     posts: list[ThreadsPost],
     triage: dict[str, PostTriage],
-    weights: RankingWeights = RankingWeights(),
+    weights: RankingWeights = _DEFAULT_WEIGHTS,
 ) -> list[tuple[ThreadsPost, float]]:
     """Return (post, score) sorted best first; reply count only breaks ties."""
     scored = [(post, score_post(post, triage[post.post_id], weights)) for post in posts if post.post_id in triage]

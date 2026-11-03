@@ -2,7 +2,6 @@ import { z } from "zod";
 
 export const threadsParametersSchema = z.object({
   mode: z.enum(["scraper", "travel"]).default("scraper"),
-  discovery_mode: z.enum(["legacy", "evidence_poi"]).default("legacy"),
   discovery_query_planning: z.boolean().default(true),
   discovery_max_queries: z.number().int().min(1).max(20).default(10),
   discovery_comment_budget: z.number().int().min(1).max(100).default(20),
@@ -37,7 +36,7 @@ export const threadsRequestSchema = threadsParametersSchema.extend({
   query: z.string().trim().min(1, "Enter a search question.").max(1000),
   visibility: z.enum(["public", "private"]).default("public"),
 }).refine((value) => value.keywords.length > 0 || value.expand_query || value.query.length <= 100 ||
-  (value.discovery_mode === "evidence_poi" && value.discovery_query_planning), {
+  (value.discovery_mode === "evidence_poi" && (value.discovery_query_planning || value.query_planning)), {
   message: "Supply short keywords or enable query expansion for a longer question.",
   path: ["query"],
 }).refine((value) => value.discovery_mode === "legacy" || value.mode === "travel", {
@@ -63,6 +62,38 @@ export const postDiscoverySchema = z.object({
   comment_error: z.string().nullable().optional(),
 });
 
+export const poiClaimSchema = z.object({
+  claim_type: z.string(),
+  value: z.string(),
+  evidence_text: z.string(),
+  source_post_id: z.string().nullable().optional(),
+  source_comment_id: z.string().nullable().optional(),
+  confidence: z.number().default(1.0),
+});
+
+export const poiMentionSchema = z.object({
+  source_post_id: z.string(),
+  source_comment_id: z.string().nullable().optional(),
+  evidence_text: z.string(),
+  confidence: z.number().default(1.0),
+});
+
+export const poiCandidateSchema = z.object({
+  id: z.string(),
+  canonical_name: z.string(),
+  category: z.string().nullable().optional(),
+  area: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  verification_status: z.enum(["candidate", "verified", "rejected"]).default("candidate"),
+  mentions: z.array(poiMentionSchema).default([]),
+  claims: z.array(poiClaimSchema).default([]),
+  distinct_sources_count: z.number().default(1),
+});
+
+export type POICandidate = z.infer<typeof poiCandidateSchema>;
+export type POIClaim = z.infer<typeof poiClaimSchema>;
+export type POIMention = z.infer<typeof poiMentionSchema>;
+
 export const discoverySummarySchema = z.object({
   plan: z.object({
     topic: z.string().default(""),
@@ -86,7 +117,8 @@ export const discoverySummarySchema = z.object({
   comment_posts_completed: z.number().default(0),
   comment_posts_failed: z.number().default(0),
   warnings: z.array(z.string()).default([]),
-});
+  poi_candidates: z.array(poiCandidateSchema).default([]),
+}).passthrough();
 
 const commentSchema = z.object({
   id: z.string(), username: z.string(), text: z.string(), like_count: z.number(),

@@ -19,11 +19,10 @@ DEFAULT_TYPESAFE_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 
 def is_jev_configured(config: ThreadsConfig = threads_config) -> bool:
     """Check whether a Jev / TypeSafe API key or OpenRouter API key is configured."""
-    if config.jev_api_key and config.jev_api_key.get_secret_value().strip():
-        return True
-    if settings.openrouter_api_key and settings.openrouter_api_key.get_secret_value().strip():
-        return True
-    return False
+    return bool(
+        (config.jev_api_key and config.jev_api_key.get_secret_value().strip())
+        or (settings.openrouter_api_key and settings.openrouter_api_key.get_secret_value().strip())
+    )
 
 
 def _get_api_key(config: ThreadsConfig) -> str:
@@ -145,13 +144,13 @@ class JevTriageProvider:
         topic_relevance = max(0.0, min(1.0, float(noul_val)))
 
         raw_direct = float(answers.get("direct_poi_score", {}).get("score", 0))
-        direct_score = max(0, min(4, int(round(raw_direct))))
+        direct_score = max(0, min(4, round(raw_direct)))
 
         raw_disc = float(answers.get("discussion_poi_score", {}).get("score", 0))
-        disc_score = max(0, min(4, int(round(raw_disc))))
+        disc_score = max(0, min(4, round(raw_disc)))
 
         raw_promo = float(answers.get("promotion_risk", {}).get("score", 0))
-        promo_score = max(0, min(4, int(round(raw_promo))))
+        promo_score = max(0, min(4, round(raw_promo)))
 
         model_version = str(data.get("model", model))
 

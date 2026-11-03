@@ -3,9 +3,6 @@
 import logging
 
 from app.tools.threads.ai import GroqThreadsAI, ThreadsAI
-from app.tools.threads.poi_extractor import POIExtractor
-from app.tools.threads.poi_resolver import resolve_poi_mentions
-from app.tools.threads.poi_schemas import POICandidate, POIClaim, POIMention
 from app.tools.threads.config import ThreadsConfig
 from app.tools.threads.discovery_schemas import (
     DiscoveryQueryPlan,
@@ -13,6 +10,9 @@ from app.tools.threads.discovery_schemas import (
     PostTriage,
 )
 from app.tools.threads.errors import ThreadsError
+from app.tools.threads.poi_extractor import POIExtractor
+from app.tools.threads.poi_resolver import resolve_poi_mentions
+from app.tools.threads.poi_schemas import POICandidate, POIClaim, POIMention
 from app.tools.threads.providers.jev_triage import JevTriageProvider, is_jev_configured
 from app.tools.threads.query_planner import MAX_QUERY_LENGTH, merge_query_plan
 from app.tools.threads.schemas import DiscoverySummary, ThreadsPost, ThreadsRequest
@@ -100,7 +100,7 @@ async def extract_and_resolve_pois(
         mentions, claims = await extractor.extract_from_posts(posts)
         candidates = resolve_poi_mentions(mentions, claims)
         return mentions, candidates, claims
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- Non-fatal LLM error caught to keep pipeline running
         warnings.append(f"POI extraction encountered an error ({type(exc).__name__}).")
         logger.warning("POI extraction failed: %s", exc)
         return [], [], []

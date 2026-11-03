@@ -101,7 +101,7 @@ class POIExtractor:
                     {"conversations": combined_text},
                     ExtractionResponse,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- LLM/parsing chunk error caught to allow next chunk
                 logger.warning("POI extraction chunk failed: %s", exc)
                 continue
 

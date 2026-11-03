@@ -5,7 +5,7 @@ from typing import Protocol
 from app.tools.threads.discovery_schemas import DiscoveryRoute, PostTriage
 from app.tools.threads.schemas import ThreadsPost
 
-__all__ = ["PostTriage", "PostTriageProvider", "route_post", "MIN_TOPIC_RELEVANCE", "ROUTE_SCORE_THRESHOLD"]
+__all__ = ["MIN_TOPIC_RELEVANCE", "ROUTE_SCORE_THRESHOLD", "PostTriage", "PostTriageProvider", "route_post"]
 
 MIN_TOPIC_RELEVANCE = 0.2
 ROUTE_SCORE_THRESHOLD = 2

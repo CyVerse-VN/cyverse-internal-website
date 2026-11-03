@@ -329,6 +329,7 @@ export function ThreadsWorkspace() {
             className={`${styles.chatGptTab} ${activeTab === "scraper" ? styles.chatGptTabActive : ""}`}
             onClick={() => {
               setActiveTab("scraper");
+              updateParameters({ mode: "scraper", discovery_mode: "legacy" });
               if (typeof window !== "undefined") {
                 window.localStorage.setItem("cyverse.threads.activeTab", "scraper");
               }
@@ -348,6 +349,7 @@ export function ThreadsWorkspace() {
             className={`${styles.chatGptTab} ${activeTab === "travel" ? styles.chatGptTabActive : ""}`}
             onClick={() => {
               setActiveTab("travel");
+              updateParameters({ mode: "travel", discovery_mode: "evidence_poi" });
               if (typeof window !== "undefined") {
                 window.localStorage.setItem("cyverse.threads.activeTab", "travel");
               }
@@ -469,6 +471,7 @@ export function ThreadsWorkspace() {
                           search_type: "both",
                           expand_query: false,
                           check_duplicate: false,
+                          discovery_mode: "evidence_poi",
                         });
                         setFormError(null);
                       }}
