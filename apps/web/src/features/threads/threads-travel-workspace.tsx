@@ -187,6 +187,12 @@ export function ThreadsTravelWorkspace({
   const [viewMode, setViewMode] = useState<"places" | "curated" | "poi">("places");
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    if (activeRun?.result?.discovery?.poi_candidates && activeRun.result.discovery.poi_candidates.length > 0) {
+      setViewMode("poi");
+    }
+  }, [activeRun?.id, activeRun?.status, activeRun?.result?.discovery?.poi_candidates?.length]);
+
   function getStageLabel(stage: string): string {
     const stageMap = t("threads.stages") as unknown as Record<string, string>;
     return stageMap?.[stage] ?? STAGE_LABELS[stage] ?? stage;
