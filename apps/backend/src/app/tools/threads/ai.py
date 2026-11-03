@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.core.config import settings
 from app.tools.threads.config import ThreadsConfig
 from app.tools.threads.errors import ThreadsError
-from app.tools.threads.schemas import ThreadsAnalysis, ThreadsPost
+from app.tools.threads.schemas import DiscoveryQueryPlan, PostTriage, ThreadsAnalysis, ThreadsPost
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,18 @@ class FilterResponse(BaseModel):
     relevant_post_ids: list[str] = Field(max_length=15)
 
 
+class TriageItem(BaseModel):
+    post_id: str
+    triage: PostTriage
+
+
+class TriageResponse(BaseModel):
+    posts: list[TriageItem] = Field(max_length=15)
+
+
 class ThreadsAI(Protocol):
+    async def plan_discovery(self, query: str, seeds: list[str], limit: int) -> DiscoveryQueryPlan: ...
+    async def classify(self, query: str, posts: list[ThreadsPost]) -> dict[str, PostTriage]: ...
     async def keywords(self, query: str, count: int | None = None) -> list[str]: ...
     async def filter(
         self, query: str, posts: list[ThreadsPost], strictness: str = "high"
@@ -92,7 +103,7 @@ class GroqThreadsAI:
                 502,
             ) from exc
         except (httpx.RequestError, ValueError, KeyError, IndexError, TypeError, ValidationError) as exc:
-            logger.error("Groq AI completion error: %s (%s)", type(exc).__name__, exc)
+            logger.error("Groq AI completion error: %s", type(exc).__name__)
             raise ThreadsError(
                 "GROQ_UNAVAILABLE",
                 "Threads AI returned an invalid response or was unavailable.",
@@ -127,6 +138,31 @@ class GroqThreadsAI:
             )
         logger.info("Generated %d search keywords: %s", len(keywords), keywords)
         return keywords[:target_count]
+
+    async def plan_discovery(self, query: str, seeds: list[str], limit: int) -> DiscoveryQueryPlan:
+        return await self._complete(
+            "Plan diverse Threads searches for local places. Include demand-driven questions and "
+            "experience-driven shares, neighborhood and topic angles where useful. Preserve language "
+            "and geographic scope, avoid redundant variants and negative search phrases. "
+            "Use origin generated and never replace manual seeds. Do not invent facts.",
+            {"query": query, "manual_seeds": seeds, "maximum_queries": limit},
+            DiscoveryQueryPlan,
+        )
+
+    async def classify(self, query: str, posts: list[ThreadsPost]) -> dict[str, PostTriage]:
+        result = await self._complete(
+            "Classify each post for place discovery. Score direct place mentions and discussion "
+            "potential independently from 0 to 4; questions can have high discussion potential "
+            "without naming a place. Use uncertain for unknown geography. Identify promotion risk. "
+            "Return each supplied post_id once, with provider groq and model as an empty string.",
+            {"query": query, "posts": [{"post_id": p.post_id, "text": p.text[:3000]} for p in posts]},
+            TriageResponse,
+        )
+        expected = {post.post_id for post in posts}
+        ids = [item.post_id for item in result.posts]
+        if set(ids) != expected or len(ids) != len(expected):
+            raise ThreadsError("GROQ_INVALID_TRIAGE", "Threads AI returned incomplete classification.", 502)
+        return {item.post_id: item.triage.model_copy(update={"provider": "groq", "model": self.config.groq_model}) for item in result.posts}
 
     async def analyze_grouped_keywords(self, query: str) -> GroupedKeywordsResponse:
         instruction = (

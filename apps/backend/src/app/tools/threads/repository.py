@@ -113,7 +113,8 @@ class ThreadsRepository:
         )
         if run is not None and (
             run.tool_name != "threads"
-            or run.details.get("request") != request.model_dump(mode="json")
+            or ThreadsRequest.model_validate(run.details.get("request")).model_dump(mode="json")
+            != request.model_dump(mode="json")
         ):
             raise ThreadsError(
                 "IDEMPOTENCY_CONFLICT", "This idempotency key has different input.", 409

@@ -2,6 +2,10 @@ import { z } from "zod";
 
 export const threadsParametersSchema = z.object({
   mode: z.enum(["scraper", "travel"]).default("scraper"),
+  discovery_mode: z.enum(["legacy", "evidence_poi"]).default("legacy"),
+  discovery_query_planning: z.boolean().default(true),
+  discovery_max_queries: z.number().int().min(1).max(20).default(10),
+  discovery_comment_budget: z.number().int().min(1).max(100).default(20),
   keywords: z.array(z.string().trim().min(1).max(100)).max(20),
   max_posts_per_keyword: z.number().int().min(1).max(100).default(25),
   search_type: z.enum(["top", "recent", "both"]),
@@ -27,7 +31,8 @@ export const threadsParametersSchema = z.object({
 export const threadsRequestSchema = threadsParametersSchema.extend({
   query: z.string().trim().min(1, "Enter a search question.").max(1000),
   visibility: z.enum(["public", "private"]).default("public"),
-}).refine((value) => value.keywords.length > 0 || value.expand_query || value.query.length <= 100, {
+}).refine((value) => value.keywords.length > 0 || value.expand_query || value.query.length <= 100 ||
+  (value.discovery_mode === "evidence_poi" && value.discovery_query_planning), {
   message: "Supply short keywords or enable query expansion for a longer question.",
   path: ["query"],
 });
@@ -42,6 +47,12 @@ export const threadsPostSchema = z.object({
   published_at: z.string().nullable(), like_count: z.number(), reply_count: z.number(),
   repost_count: z.number(), images: z.array(z.string()), videos: z.array(z.string()),
   search_keywords: z.array(z.string()), comments: z.array(commentSchema),
+  triage: z.object({
+    geo_match: z.enum(["yes", "no", "uncertain"]), topic_relevance: z.number(),
+    direct_poi_score: z.number(), discussion_poi_score: z.number(), promotion_risk: z.number(),
+    reasons: z.array(z.string()), provider: z.string(), model: z.string().default(""),
+  }).nullable().default(null),
+  comment_collection_status: z.enum(["not_attempted", "completed", "partial", "failed"]).default("not_attempted"),
   ai_analysis: z.object({
     is_relevant: z.boolean(), confidence_score: z.number(), topic: z.string(), summary: z.string(),
     recommended_places: z.array(z.object({

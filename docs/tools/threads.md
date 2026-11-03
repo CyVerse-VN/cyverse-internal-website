@@ -1,5 +1,19 @@
 # Threads Scraper Tool
 
+## Discovery post triage (đang phát triển)
+
+Travel có thể chọn `discovery_mode="evidence_poi"` để thử Query Planning và Groq
+post triage. Đây mới là nền tảng chọn bài: chưa có trích xuất POI có evidence,
+entity resolution hoặc xác minh, nên không xem kết quả là danh sách địa điểm đã xác nhận.
+Mặc định vẫn là `legacy`. Discovery giữ keyword thủ công làm seed, giới hạn số query
+bằng `discovery_max_queries` (mặc định 10, tối đa 20) và comment bằng
+`discovery_comment_budget` (mặc định 20, tối đa 100); giới hạn `max_comment_posts`
+dương vẫn được áp dụng nếu nhỏ hơn. `discovery_query_planning=false` tắt lập kế hoạch.
+Triage cần Groq ngay cả khi tắt lập kế hoạch. Các metadata `discovery_plan`, `triage`
+và `comment_collection_status` được lưu trong snapshot của session, theo cùng quyền
+truy cập và vòng đời xóa/hủy hiện tại. `not_attempted` không có nghĩa bài không có comment.
+Trọng số ranking ban đầu là heuristic và chưa được hiệu chuẩn bằng benchmark.
+
 JSON export có ba mức khi tải: `basic` (mặc định: bài và bình luận), `standard`
 (thêm metadata và thống kê), `full` (thêm source data). Mức xuất không thay đổi dữ
 liệu trong database. `standard` và `full` chứa run ID, request, trạng thái và `result`.

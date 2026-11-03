@@ -11,7 +11,9 @@ from app.tools.threads.ai import GroqThreadsAI, ThreadsAI
 from app.tools.threads.config import ThreadsConfig
 from app.tools.threads.crawler import SessionCallback, ThreadsCrawler, open_crawler
 from app.tools.threads.errors import ThreadsCancelled, ThreadsError
-from app.tools.threads.schemas import ThreadsPost, ThreadsRequest, ThreadsResult
+from app.tools.threads.query_planning import combine_queries
+from app.tools.threads.ranking import rank_comment_targets
+from app.tools.threads.schemas import DiscoveryQueryPlan, ThreadsPost, ThreadsRequest, ThreadsResult
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +88,14 @@ class ThreadsPipeline:
             )
 
         await checkpoint("planning", 0.05)
+        discovery = request.discovery_mode == "evidence_poi"
+        discovery_plan: DiscoveryQueryPlan | None = None
         keywords = request.keywords.copy()
-        if not keywords and request.expand_query:
+        if discovery and request.discovery_query_planning:
+            generated = await ai.plan_discovery(request.query, keywords, request.discovery_max_queries)
+            discovery_plan = combine_queries(generated, keywords, request.discovery_max_queries)
+            keywords = [item.text for item in discovery_plan.queries]
+        elif not discovery and not keywords and request.expand_query:
             try:
                 keywords = await ai.keywords(request.query, count=request.keywords_per_query)
             except TypeError:
@@ -118,6 +126,7 @@ class ThreadsPipeline:
                 duration_seconds=round(time.monotonic() - started, 2),
                 warnings=warnings.copy(),
                 search_attempts=search_attempts.copy(),
+                discovery_plan=discovery_plan,
                 schema_version=2,
             )
 
@@ -194,6 +203,8 @@ class ThreadsPipeline:
                         if new_posts >= request.max_posts_per_keyword:
                             break
                 search_attempts[-1]["previous_session_duplicates"] = previous_session_duplicates
+                if discovery_plan is not None:
+                    search_attempts[-1]["angle"] = next(item.angle for item in discovery_plan.queries if item.text == keyword)
                 search_attempts[-1]["collection_duplicates"] = collection_duplicates
                 search_attempts[-1]["new_posts"] = new_posts
                 search_attempts[-1]["search_limit"] = search_limit
@@ -231,7 +242,20 @@ class ThreadsPipeline:
                 "No posts were found; check the query and account session if this persists."
             )
         candidates = all_posts
-        if filtering:
+        if discovery:
+            await checkpoint("filtering", 0.45)
+            for index in range(0, len(all_posts), 15):
+                await checkpoint("filtering", 0.45)
+                batch = all_posts[index:index + 15]
+                classified = await ai.classify(request.query, batch)
+                if set(classified) != {post.post_id for post in batch}:
+                    raise ThreadsError("INVALID_TRIAGE", "Discovery classification is incomplete.", 502)
+                for post in batch:
+                    post.triage = classified[post.post_id]
+                    post.filter_selected = post.triage.geo_match != "no" and post.triage.topic_relevance >= 0.3
+                await persist(all_posts)
+            candidates = [post for post in all_posts if post.filter_selected]
+        elif filtering:
             await checkpoint("filtering", 0.45)
             logger.info(
                 "Starting AI relevance filtering on %d posts (strictness: %s)",
@@ -279,12 +303,15 @@ class ThreadsPipeline:
                 if request.min_replies <= 0
                 else [post for post in candidates if post.reply_count >= request.min_replies]
             )
-            targets = sorted(
-                filtered_candidates,
-                key=lambda post: post.reply_count,
-                reverse=True,
+            targets = rank_comment_targets(filtered_candidates) if discovery else sorted(
+                filtered_candidates, key=lambda post: post.reply_count, reverse=True,
             )
-            if request.max_comment_posts > 0:
+            if discovery:
+                limit = request.discovery_comment_budget
+                if request.max_comment_posts > 0:
+                    limit = min(limit, request.max_comment_posts)
+                targets = targets[:limit]
+            elif request.max_comment_posts > 0:
                 targets = targets[: request.max_comment_posts]
             logger.info(
                 "Starting comment collection for %d posts (max comments per post: %d)",
@@ -295,7 +322,16 @@ class ThreadsPipeline:
                 await checkpoint("comments", 0.5 + 0.2 * index / max(len(targets), 1))
                 try:
                     post.comments = await crawler.comments(post.url, request.max_comments_per_post)
+                    if discovery:
+                        post.comment_collection_status = "completed"
+                except ThreadsCancelled:
+                    raise
                 except Exception as exc:
+                    if discovery:
+                        post.comment_collection_status = "failed"
+                        warnings.append(f"Comment collection failed for post {post.post_id}.")
+                        await persist(all_posts)
+                        continue
                     logger.error(
                         "Failed to fetch comments for post %s (%s): %s (%s)",
                         post.post_id,

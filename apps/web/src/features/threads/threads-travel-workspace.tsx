@@ -152,6 +152,10 @@ export function ThreadsTravelWorkspace({
   // Scraper configuration identical to Threads Scraper tab
   const [parameters, setParameters] = useState<ThreadsParameters>({
     mode: "travel",
+    discovery_mode: "legacy",
+    discovery_query_planning: true,
+    discovery_max_queries: 20,
+    discovery_comment_budget: 20,
     keywords: [],
     max_posts_per_keyword: 50,
     search_type: "both", // Default to both recent and top for comprehensive local search
@@ -311,7 +315,7 @@ export function ThreadsTravelWorkspace({
   async function handleStartCrawler() {
     if (!prompt.trim()) return;
     const activeKws = Array.from(selectedKeywords);
-    if (activeKws.length === 0) {
+    if (activeKws.length === 0 && !(parameters.discovery_mode === "evidence_poi" && parameters.discovery_query_planning)) {
       setSubmitError(t("threads.noKeywordsSelected"));
       return;
     }
@@ -787,6 +791,22 @@ export function ThreadsTravelWorkspace({
 
           {/* AI Assistance Section */}
           <div className={styles.segmentedGroup}>
+            <label>
+              <input type="checkbox" checked={parameters.discovery_mode === "evidence_poi"}
+                disabled={!config?.ai_available}
+                onChange={(event) => updateParameters({ discovery_mode: event.target.checked ? "evidence_poi" : "legacy" })} />
+              Enable Discovery post triage (Groq)
+            </label>
+            {parameters.discovery_mode === "evidence_poi" && <>
+              <label><input type="checkbox" checked={parameters.discovery_query_planning}
+                onChange={(event) => updateParameters({ discovery_query_planning: event.target.checked })} /> Query planning</label>
+              <label>Comment post budget <input type="number" min={1} max={100}
+                value={parameters.discovery_comment_budget}
+                onChange={(event) => updateParameters({ discovery_comment_budget: Number(event.target.value) })} /></label>
+              <small>Selected keywords are retained as manual search seeds. Evidence-grounded POI extraction is not yet available.</small>
+            </>}
+          </div>
+          <div className={styles.segmentedGroup}>
             <span>{t("threads.preFilterStrictness")}</span>
             <div className={styles.segmentedControl}>
               <button
@@ -1060,7 +1080,7 @@ export function ThreadsTravelWorkspace({
             type="button"
             className={styles.startCrawlerBtn}
             onClick={handleStartCrawler}
-            disabled={isSubmitting || selectedCount === 0}
+            disabled={isSubmitting || (selectedCount === 0 && !(parameters.discovery_mode === "evidence_poi" && parameters.discovery_query_planning))}
           >
             <Play size={16} />
             {isSubmitting
@@ -1193,6 +1213,14 @@ export function ThreadsTravelWorkspace({
               <small className={styles.metricSub}>Giai đoạn: {activeRun.stage}</small>
             </div>
           </div>
+
+          {activeRun.request.discovery_mode === "evidence_poi" && activeRun.result && (
+            <div role="status">
+              <p>Direct place potential: {activeRun.result.posts.filter((post) => (post.triage?.direct_poi_score ?? 0) >= 2).length} · Discussion potential: {activeRun.result.posts.filter((post) => (post.triage?.discussion_poi_score ?? 0) >= 2).length} · Comment collections completed: {activeRun.result.posts.filter((post) => post.comment_collection_status === "completed").length}</p>
+              <p>These are triage signals, not verified places. POI extraction is not available yet.</p>
+              {activeRun.result.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
+            </div>
+          )}
 
           {/* Stage list */}
           <ol className={styles.stageList} aria-label="Collection stages">

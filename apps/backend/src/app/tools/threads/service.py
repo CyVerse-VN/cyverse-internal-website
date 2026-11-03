@@ -255,7 +255,8 @@ class ThreadsService:
         if not self.config.enabled:
             raise ThreadsError("THREADS_DISABLED", "The Threads tool is disabled.", 503)
         requires_ai = (
-            request.curate
+            request.discovery_mode == "evidence_poi"
+            or request.curate
             or (request.pre_filter and request.pre_filter_strictness != "none")
             or (request.expand_query and not request.keywords)
         )
@@ -283,7 +284,9 @@ class ThreadsService:
                 "Create login sessions for enabled Threads accounts.",
                 503,
             )
-        if not request.keywords and not request.expand_query and len(request.query) > 100:
+        if not request.keywords and not request.expand_query and len(request.query) > 100 and not (
+            request.discovery_mode == "evidence_poi" and request.discovery_query_planning
+        ):
             raise ThreadsError(
                 "KEYWORDS_REQUIRED", "Supply short keywords or enable query expansion."
             )
