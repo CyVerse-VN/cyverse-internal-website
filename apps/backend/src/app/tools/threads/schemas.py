@@ -4,15 +4,30 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.tools.threads.discovery_schemas import DiscoveryQuery, DiscoveryQueryPlan, PostDiscovery
+from app.tools.threads.poi_schemas import POICandidate, POIMention
+
+
+class DiscoverySummary(BaseModel):
+    plan: DiscoveryQueryPlan | None = None
+    triage_provider: str | None = None
+    direct_posts: int = 0
+    discussion_posts: int = 0
+    excluded_posts: int = 0
+    unclassified_posts: int = 0
+    comment_posts_selected: int = 0
+    comment_posts_completed: int = 0
+    comment_posts_failed: int = 0
+    poi_mentions: list[POIMention] = Field(default_factory=list)
+    poi_candidates: list[POICandidate] = Field(default_factory=list)
+    verified_poi_count: int = 0
+    warnings: list[str] = Field(default_factory=list)
+
 
 class ThreadsParameters(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     mode: Literal["scraper", "travel"] = "scraper"
-    discovery_mode: Literal["legacy", "evidence_poi"] = "legacy"
-    discovery_query_planning: bool = True
-    discovery_max_queries: int = Field(default=10, ge=1, le=20)
-    discovery_comment_budget: int = Field(default=20, ge=1, le=100)
     keywords: list[str] = Field(default_factory=list, max_length=20)
     max_posts_per_keyword: int = Field(default=25, ge=1, le=100)
     search_type: Literal["top", "recent", "both"] = "recent"
@@ -32,6 +47,11 @@ class ThreadsParameters(BaseModel):
     search_timeout_seconds: int = Field(default=120, ge=-1, le=600)
     min_delay_seconds: float = Field(default=2.0, ge=0.0, le=60.0)
     max_delay_seconds: float = Field(default=4.0, ge=0.0, le=60.0)
+    discovery_mode: Literal["legacy", "evidence_poi"] = "legacy"
+    query_planning: bool = True
+    triage_provider: Literal["groq", "jev"] = "groq"
+    discovery_comment_posts: int = Field(default=20, ge=1, le=50)
+    use_manual_keywords: bool = True
 
     @field_validator("search_timeout_seconds")
     @classmethod
@@ -50,12 +70,10 @@ class ThreadsParameters(BaseModel):
 
     @model_validator(mode="after")
     def validate_delays(self) -> "ThreadsParameters":
-        if self.discovery_mode != "legacy" and self.mode != "travel":
-            raise ValueError("Discovery mode is only available for travel")
-        if self.discovery_mode != "legacy" and len(self.keywords) > self.discovery_max_queries:
-            raise ValueError("Manual keywords exceed the discovery query limit")
         if self.min_delay_seconds > self.max_delay_seconds:
             raise ValueError("Minimum delay must not exceed maximum delay")
+        if self.discovery_mode != "legacy" and self.mode != "travel":
+            raise ValueError("Discovery mode is only available in travel mode")
         return self
 
 
@@ -81,6 +99,7 @@ class ThreadsConfigResponse(BaseModel):
     ai_available: bool
     cloudinary_ready: bool = False
     defaults: ThreadsParameters
+    triage_providers: list[str] = Field(default_factory=lambda: ["groq"])
     limits: dict[str, int]
 
 
@@ -134,37 +153,7 @@ class ThreadsPost(BaseModel):
     source_data: dict[str, object] | None = None
     source_data_status: Literal["captured", "omitted", "unknown"] = "unknown"
     filter_selected: bool | None = None
-    triage: "PostTriage | None" = None
-    comment_collection_status: Literal["not_attempted", "completed", "partial", "failed"] = "not_attempted"
-
-
-class DiscoveryQuery(BaseModel):
-    text: str = Field(min_length=1, max_length=100)
-    angle: Literal["demand", "experience", "neighborhood", "topic_specific"]
-    target_content: Literal["direct", "discussion", "both"]
-    origin: Literal["manual", "generated"]
-    rationale: str = Field(default="", max_length=500)
-
-
-class DiscoveryQueryPlan(BaseModel):
-    topic: str = Field(max_length=1000)
-    geographic_scope: str | None = None
-    desired_attributes: list[str] = Field(default_factory=list, max_length=20)
-    exclusions: list[str] = Field(default_factory=list, max_length=20)
-    queries: list[DiscoveryQuery] = Field(default_factory=list, max_length=20)
-
-
-class PostTriage(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    geo_match: Literal["yes", "no", "uncertain"]
-    topic_relevance: float = Field(ge=0, le=1, allow_inf_nan=False)
-    direct_poi_score: int = Field(ge=0, le=4, strict=True)
-    discussion_poi_score: int = Field(ge=0, le=4, strict=True)
-    promotion_risk: int = Field(ge=0, le=4, strict=True)
-    reasons: list[str] = Field(default_factory=list, max_length=10)
-    provider: str = Field(max_length=100)
-    model: str = Field(default="", max_length=200)
+    discovery: PostDiscovery | None = None
 
 
 class ThreadsResult(BaseModel):
@@ -178,7 +167,7 @@ class ThreadsResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     schema_version: int = 1
     search_attempts: list[dict[str, object]] = Field(default_factory=list)
-    discovery_plan: DiscoveryQueryPlan | None = None
+    discovery: DiscoverySummary | None = None
 
 
 class ThreadsRunResponse(BaseModel):

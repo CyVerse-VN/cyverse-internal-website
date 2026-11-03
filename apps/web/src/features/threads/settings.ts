@@ -35,6 +35,11 @@ export const DEFAULT_THREADS_PARAMETERS: ThreadsParameters = {
   max_accounts: 3, use_proxy: true,
   run_timeout_seconds: 1800, search_timeout_seconds: 120,
   min_delay_seconds: 2, max_delay_seconds: 4,
+  discovery_mode: "legacy",
+  query_planning: true,
+  triage_provider: "groq",
+  discovery_comment_posts: 20,
+  use_manual_keywords: true,
 };
 
 export function parseKeywords(value: string): string[] {

@@ -277,6 +277,7 @@ export function ThreadsTravelForm({
   }
 
   const selectedCount = selectedKeywords.size;
+  const isDiscoveryPlanning = parameters.discovery_mode === "evidence_poi" && parameters.query_planning;
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
@@ -967,7 +968,7 @@ export function ThreadsTravelForm({
       <Button
         type="submit"
         className={styles.startButton}
-        disabled={busy || !ready || selectedCount === 0}
+        disabled={busy || !ready || (!isDiscoveryPlanning && selectedCount === 0)}
       >
         <Play size={15} />
         {busy
@@ -976,9 +977,13 @@ export function ThreadsTravelForm({
             ? (language === "vi"
               ? `Thêm vào hàng đợi (${selectedCount} từ khóa)`
               : `Add to queue (${selectedCount} keywords)`)
-            : (language === "vi"
-              ? `Bắt đầu thu thập (${selectedCount} từ khóa đã chọn)`
-              : `Start collection (${selectedCount} keywords)`)}
+            : isDiscoveryPlanning && selectedCount === 0
+              ? (language === "vi"
+                ? "Bắt đầu Discovery (Tự động lập kế hoạch)"
+                : "Start Discovery (Auto-planning)")
+              : (language === "vi"
+                ? `Bắt đầu thu thập (${selectedCount} từ khóa đã chọn)`
+                : `Start collection (${selectedCount} keywords)`)}
       </Button>
       {isQueuing && (
         <p className={styles.queueHint} role="status">

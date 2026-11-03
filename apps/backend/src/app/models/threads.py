@@ -37,6 +37,15 @@ class ThreadsResultRecord(Base):
     posts: Mapped[list[ThreadsPostRecord]] = relationship(
         cascade="all, delete-orphan", order_by="ThreadsPostRecord.position", lazy="raise"
     )
+    poi_candidates: Mapped[list[ThreadsPOICandidateRecord]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    poi_mentions: Mapped[list[ThreadsPOIMentionRecord]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+    poi_claims: Mapped[list[ThreadsPOIClaimRecord]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class ThreadsPostRecord(Base):
@@ -88,3 +97,79 @@ class ThreadsAccountSessionRecord(Base):
         nullable=False,
     )
 
+
+
+
+class ThreadsPOICandidateRecord(Base):
+    __tablename__ = "threads_poi_candidates"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("threads_results.run_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    canonical_name: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+    category: Mapped[str | None] = mapped_column(String(128))
+    area: Mapped[str | None] = mapped_column(String(256))
+    address: Mapped[str | None] = mapped_column(String(512))
+    verification_status: Mapped[str] = mapped_column(String(32), default="candidate", nullable=False)
+    metadata_json: Mapped[dict[str, object]] = mapped_column(JSON_TYPE, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        nullable=False,
+    )
+
+
+class ThreadsPOIMentionRecord(Base):
+    __tablename__ = "threads_poi_mentions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    candidate_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("threads_poi_candidates.id", ondelete="CASCADE"), index=True
+    )
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("threads_results.run_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    post_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    comment_id: Mapped[str | None] = mapped_column(String(128))
+    name_text: Mapped[str] = mapped_column(String(256), nullable=False)
+    category_text: Mapped[str | None] = mapped_column(String(128))
+    area_text: Mapped[str | None] = mapped_column(String(256))
+    address_text: Mapped[str | None] = mapped_column(String(512))
+    evidence_text: Mapped[str] = mapped_column(String(2000), nullable=False)
+    start_offset: Mapped[int | None] = mapped_column(Integer)
+    end_offset: Mapped[int | None] = mapped_column(Integer)
+    context_incomplete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        nullable=False,
+    )
+
+
+class ThreadsPOIClaimRecord(Base):
+    __tablename__ = "threads_poi_claims"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    mention_id: Mapped[UUID] = mapped_column(
+        ForeignKey("threads_poi_mentions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("threads_results.run_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    claim_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    value: Mapped[str] = mapped_column(String(512), nullable=False)
+    evidence_text: Mapped[str] = mapped_column(String(2000), nullable=False)
+    source_post_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_comment_id: Mapped[str | None] = mapped_column(String(128))
+    sentiment: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        nullable=False,
+    )

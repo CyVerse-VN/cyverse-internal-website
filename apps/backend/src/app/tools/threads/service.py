@@ -12,6 +12,7 @@ from app.tools.threads.ai import GroqThreadsAI
 from app.tools.threads.cloudinary import cloudinary_config
 from app.tools.threads.config import ThreadsConfig, threads_config
 from app.tools.threads.errors import ThreadsError
+from app.tools.threads.providers.jev_triage import is_jev_configured
 from app.tools.threads.repository import TERMINAL_STATUSES, ThreadsRepository, to_response
 from app.tools.threads.schemas import (
     ThreadsConfigResponse,
@@ -239,11 +240,14 @@ class ThreadsService:
             ),
             cloudinary_ready=cloudinary_config.ready,
             defaults=ThreadsParameters(),
+            triage_providers=["groq", "jev"] if is_jev_configured(self.config) else ["groq"],
             limits={
                 "keywords": 20,
                 "posts_per_keyword": 100,
                 "comment_posts": 500,
                 "comments_per_post": 500,
+                "discovery_comment_posts": 50,
+                "discovery_max_queries": self.config.discovery_max_queries,
                 "run_timeout_seconds": 86400,
                 "search_timeout_seconds": 600,
             },
@@ -259,6 +263,7 @@ class ThreadsService:
             or request.curate
             or (request.pre_filter and request.pre_filter_strictness != "none")
             or (request.expand_query and not request.keywords)
+            or request.discovery_mode == "evidence_poi"
         )
         if requires_ai and (
             not settings.groq_api_key or not settings.groq_api_key.get_secret_value().strip()

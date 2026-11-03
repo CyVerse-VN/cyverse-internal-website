@@ -9,11 +9,22 @@ from playwright.async_api import Error as PlaywrightError
 
 from app.tools.threads.ai import GroqThreadsAI, ThreadsAI
 from app.tools.threads.config import ThreadsConfig
+from app.tools.threads.discovery import (
+    apply_triage,
+    extract_and_resolve_pois,
+    plan_discovery,
+    select_triage_providers,
+    summarize,
+    triage_posts,
+)
+from app.tools.threads.poi_schemas import POICandidate, POIMention
+from app.tools.threads.discovery_schemas import DiscoveryQueryPlan, PostDiscovery
 from app.tools.threads.crawler import SessionCallback, ThreadsCrawler, open_crawler
 from app.tools.threads.errors import ThreadsCancelled, ThreadsError
-from app.tools.threads.query_planning import combine_queries
-from app.tools.threads.ranking import rank_comment_targets
-from app.tools.threads.schemas import DiscoveryQueryPlan, ThreadsPost, ThreadsRequest, ThreadsResult
+from app.tools.threads.providers.groq_triage import GroqTriageProvider
+from app.tools.threads.ranking import select_comment_targets
+from app.tools.threads.schemas import ThreadsPost, ThreadsRequest, ThreadsResult
+from app.tools.threads.triage import PostTriageProvider
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +48,14 @@ class ThreadsPipeline:
         on_snapshot: SnapshotCallback | None = None,
         existing_post_ids: set[str] | None = None,
         on_session: SessionCallback | None = None,
+        triage_provider: PostTriageProvider | None = None,
     ) -> ThreadsResult:
         async with httpx.AsyncClient(follow_redirects=False) as client:
             provider = ai or GroqThreadsAI(self.config, client)
             if crawler is not None:
                 return await self._execute(
-                    request, crawler, provider, on_progress, is_cancelled, on_snapshot, existing_post_ids
+                    request, crawler, provider, on_progress, is_cancelled, on_snapshot, existing_post_ids,
+                    triage_provider,
                 )
             async with open_crawler(
                 self.config,
@@ -52,7 +65,8 @@ class ThreadsPipeline:
                 on_session=on_session,
             ) as browser:
                 return await self._execute(
-                    request, browser, provider, on_progress, is_cancelled, on_snapshot, existing_post_ids
+                    request, browser, provider, on_progress, is_cancelled, on_snapshot, existing_post_ids,
+                    triage_provider,
                 )
 
     async def _execute(
@@ -64,6 +78,7 @@ class ThreadsPipeline:
         is_cancelled: CancellationCallback,
         on_snapshot: SnapshotCallback | None,
         existing_post_ids: set[str] | None = None,
+        triage_provider: PostTriageProvider | None = None,
     ) -> ThreadsResult:
         started = time.monotonic()
         warnings: list[str] = []
@@ -90,12 +105,17 @@ class ThreadsPipeline:
         await checkpoint("planning", 0.05)
         discovery = request.discovery_mode == "evidence_poi"
         discovery_plan: DiscoveryQueryPlan | None = None
+        angle_by_keyword: dict[str, str] = {}
+        triage_name: str | None = None
+        selected_for_comments = 0
+        discovered_candidates: list[POICandidate] = []
+        discovered_mentions: list[POIMention] = []
         keywords = request.keywords.copy()
-        if discovery and request.discovery_query_planning:
-            generated = await ai.plan_discovery(request.query, keywords, request.discovery_max_queries)
-            discovery_plan = combine_queries(generated, keywords, request.discovery_max_queries)
+        if discovery:
+            discovery_plan = await plan_discovery(request, ai, self.config, warnings)
             keywords = [item.text for item in discovery_plan.queries]
-        elif not discovery and not keywords and request.expand_query:
+            angle_by_keyword = {item.text: item.angle for item in discovery_plan.queries}
+        elif not keywords and request.expand_query:
             try:
                 keywords = await ai.keywords(request.query, count=request.keywords_per_query)
             except TypeError:
@@ -121,12 +141,24 @@ class ThreadsPipeline:
                 keywords=keywords,
                 posts=selected_posts,
                 curated_post_ids=curated.copy(),
+                discovery=(
+                    summarize(
+                        selected_posts,
+                        discovery_plan,
+                        triage_name,
+                        selected_for_comments,
+                        warnings,
+                        candidates=discovered_candidates,
+                        mentions=discovered_mentions,
+                    )
+                    if discovery
+                    else None
+                ),
                 total_comments=sum(len(post.comments) for post in selected_posts),
                 duplicate_count=duplicate_count,
                 duration_seconds=round(time.monotonic() - started, 2),
                 warnings=warnings.copy(),
                 search_attempts=search_attempts.copy(),
-                discovery_plan=discovery_plan,
                 schema_version=2,
             )
 
@@ -203,11 +235,11 @@ class ThreadsPipeline:
                         if new_posts >= request.max_posts_per_keyword:
                             break
                 search_attempts[-1]["previous_session_duplicates"] = previous_session_duplicates
-                if discovery_plan is not None:
-                    search_attempts[-1]["angle"] = next(item.angle for item in discovery_plan.queries if item.text == keyword)
                 search_attempts[-1]["collection_duplicates"] = collection_duplicates
                 search_attempts[-1]["new_posts"] = new_posts
                 search_attempts[-1]["search_limit"] = search_limit
+                if discovery:
+                    search_attempts[-1]["angle"] = angle_by_keyword.get(keyword)
                 for warning in search_warnings:
                     if search_limit > request.max_posts_per_keyword and warning.startswith("Collected "):
                         if new_posts >= request.max_posts_per_keyword:
@@ -242,20 +274,25 @@ class ThreadsPipeline:
                 "No posts were found; check the query and account session if this persists."
             )
         candidates = all_posts
-        if discovery:
+        triage_map = {}
+        if discovery and all_posts:
             await checkpoint("filtering", 0.45)
-            for index in range(0, len(all_posts), 15):
-                await checkpoint("filtering", 0.45)
-                batch = all_posts[index:index + 15]
-                classified = await ai.classify(request.query, batch)
-                if set(classified) != {post.post_id for post in batch}:
-                    raise ThreadsError("INVALID_TRIAGE", "Discovery classification is incomplete.", 502)
-                for post in batch:
-                    post.triage = classified[post.post_id]
-                    post.filter_selected = post.triage.geo_match != "no" and post.triage.topic_relevance >= 0.3
-                await persist(all_posts)
-            candidates = [post for post in all_posts if post.filter_selected]
-        elif filtering:
+            if triage_provider is not None:
+                primary, fallback = triage_provider, None
+            else:
+                if not isinstance(ai, GroqThreadsAI):
+                    raise ThreadsError("TRIAGE_UNAVAILABLE", "No triage provider is configured.", 503)
+                primary, fallback = select_triage_providers(
+                    request.triage_provider, GroqTriageProvider(ai), warnings
+                )
+            triage_name = primary.name
+            triage_map = await triage_posts(request.query, all_posts, primary, fallback, warnings)
+            apply_triage(all_posts, triage_map)
+            candidates = [
+                post for post in all_posts if post.discovery and post.discovery.route != "excluded"
+            ]
+            await persist(all_posts)
+        elif filtering and not discovery:
             await checkpoint("filtering", 0.45)
             logger.info(
                 "Starting AI relevance filtering on %d posts (strictness: %s)",
@@ -297,21 +334,44 @@ class ThreadsPipeline:
 
         await persist(all_posts)
 
-        if request.include_comments:
+        if request.include_comments and discovery:
+            budget = request.discovery_comment_posts
+            if request.max_comment_posts > 0:
+                budget = min(budget, request.max_comment_posts)
+            targets = select_comment_targets(all_posts, triage_map, budget)
+            selected_for_comments = len(targets)
+            for index, post in enumerate(targets):
+                await checkpoint("comments", 0.5 + 0.2 * index / max(len(targets), 1))
+                state = post.discovery or PostDiscovery()
+                post.discovery = state
+                try:
+                    post.comments = await crawler.comments(post.url, request.max_comments_per_post)
+                except ThreadsCancelled:
+                    raise
+                except (ThreadsError, PlaywrightError, OSError) as exc:
+                    code = exc.code if isinstance(exc, ThreadsError) else "THREADS_COMMENTS_ERROR"
+                    state.comment_status = "failed"
+                    state.comment_error = code
+                    warnings.append(f"Comment crawling failed for post {post.post_id} ({code}).")
+                    logger.warning("Comment crawl failed for post %s: %s", post.post_id, code)
+                else:
+                    # Replies were reported but none were retrieved: partial, not empty.
+                    empty_despite_replies = not post.comments and post.reply_count > 0
+                    state.comment_status = "partial" if empty_despite_replies else "completed"
+                await persist(all_posts)
+                await pause()
+        elif request.include_comments:
             filtered_candidates = (
                 candidates
                 if request.min_replies <= 0
                 else [post for post in candidates if post.reply_count >= request.min_replies]
             )
-            targets = rank_comment_targets(filtered_candidates) if discovery else sorted(
-                filtered_candidates, key=lambda post: post.reply_count, reverse=True,
+            targets = sorted(
+                filtered_candidates,
+                key=lambda post: post.reply_count,
+                reverse=True,
             )
-            if discovery:
-                limit = request.discovery_comment_budget
-                if request.max_comment_posts > 0:
-                    limit = min(limit, request.max_comment_posts)
-                targets = targets[:limit]
-            elif request.max_comment_posts > 0:
+            if request.max_comment_posts > 0:
                 targets = targets[: request.max_comment_posts]
             logger.info(
                 "Starting comment collection for %d posts (max comments per post: %d)",
@@ -322,16 +382,7 @@ class ThreadsPipeline:
                 await checkpoint("comments", 0.5 + 0.2 * index / max(len(targets), 1))
                 try:
                     post.comments = await crawler.comments(post.url, request.max_comments_per_post)
-                    if discovery:
-                        post.comment_collection_status = "completed"
-                except ThreadsCancelled:
-                    raise
                 except Exception as exc:
-                    if discovery:
-                        post.comment_collection_status = "failed"
-                        warnings.append(f"Comment collection failed for post {post.post_id}.")
-                        await persist(all_posts)
-                        continue
                     logger.error(
                         "Failed to fetch comments for post %s (%s): %s (%s)",
                         post.post_id,
@@ -342,6 +393,22 @@ class ThreadsPipeline:
                     raise
                 await persist(all_posts)
                 await pause()
+
+        if discovery:
+            await checkpoint("curating", 0.75)
+            poi_targets = [p for p in all_posts if p.discovery and p.discovery.route != "excluded"]
+            if poi_targets:
+                logger.info("Starting POI extraction on %d discovery posts", len(poi_targets))
+                discovered_mentions, discovered_candidates, _claims = await extract_and_resolve_pois(
+                    poi_targets, ai, warnings
+                )
+                logger.info(
+                    "POI extraction completed: %d mentions, %d candidates (%d verified)",
+                    len(discovered_mentions),
+                    len(discovered_candidates),
+                    sum(1 for c in discovered_candidates if c.verification_status == "verified"),
+                )
+            await persist(all_posts)
 
         if request.curate:
             logger.info("Starting AI curation for %d posts", len(candidates))
